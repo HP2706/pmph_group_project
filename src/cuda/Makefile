@@ -22,7 +22,7 @@ $(EXEC_GPU): $(SRC_GPU) $(HELPERS) $(KERNELS)
 
 # we call with inputs array size, block size, items per thread, n bits per key??
 run_gpu: $(EXEC_GPU)
-	./$(EXEC_GPU) 10000
+	./$(EXEC_GPU) 100000000 
 
 clean:
 	rm -f $(EXEC_CPU) $(EXEC_GPU)

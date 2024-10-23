@@ -15,7 +15,7 @@
 
 // we use ElTp to make it generic over data types 
 template <class ElTp, int BLOCK_THREADS, int ITEMS_PER_THREAD>
-__global__ void BlockSortKernel(
+__global__ void CUBSortKernel(
     ElTp* d_in, 
     ElTp* d_out,
     int size // the length of the array

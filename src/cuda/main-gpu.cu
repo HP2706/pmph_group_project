@@ -20,7 +20,7 @@ __host__ void runCub(
     int grid_size = (size + items_per_block - 1) / items_per_block;
 
     // Dry run
-    BlockSortKernel<T, BLOCK_THREADS, ITEMS_PER_THREAD><<<grid_size, BLOCK_THREADS>>>(d_in, d_out, size);
+    CUBSortKernel<T, BLOCK_THREADS, ITEMS_PER_THREAD><<<grid_size, BLOCK_THREADS>>>(d_in, d_out, size);
     cudaDeviceSynchronize();
     gpuAssert(cudaPeekAtLastError());
 
@@ -30,7 +30,7 @@ __host__ void runCub(
     gettimeofday(&t_start, NULL);
 
     for (int i = 0; i < GPU_RUNS; i++) {
-        BlockSortKernel<T, BLOCK_THREADS, ITEMS_PER_THREAD><<<grid_size, BLOCK_THREADS>>>(d_in, d_out, size);
+        CUBSortKernel<T, BLOCK_THREADS, ITEMS_PER_THREAD><<<grid_size, BLOCK_THREADS>>>(d_in, d_out, size);
     }
     cudaDeviceSynchronize();
     gpuAssert(cudaPeekAtLastError());
@@ -40,6 +40,14 @@ __host__ void runCub(
     elapsed = (t_diff.tv_sec * 1e6 + t_diff.tv_usec) / GPU_RUNS;
 
     printf("CUB Block Sort Kernel runs in: %lu microsecs\n", elapsed);
+
+    // Calculate and print bandwidth and latency
+    double gigabytes = (double)(size * sizeof(T)) / (1024 * 1024 * 1024);
+    double seconds = elapsed / 1e6;
+    double bandwidth = gigabytes / seconds;
+    printf("GB processed: %.2f\n", gigabytes);
+    printf("Bandwidth: %.2f GB/sec\n", bandwidth);
+    printf("Latency: %.2f microsecs\n", elapsed);
 
     // Clean up
     cudaFree(d_in);
@@ -93,7 +101,7 @@ int main (int argc, char * argv[]) {
 
     printf("Running GPU-Parallel Versions (Cuda) of MMM\n");
 
-    runAll<float, 16, 5> ( size );
+    runAll<float, 256, 4> ( size );
 }
 
 
