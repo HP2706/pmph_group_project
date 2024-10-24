@@ -105,7 +105,7 @@ void multiStepUnsignedIntHisto ( uint32_t* d_inp_inds
 
         uint32_t grid = (N + B - 1) / B;
         {
-            multiStepUnsignedIntKernel<<<grid,B>>>(d_inp_inds, d_inp_vals, d_hist, N, low_bound, upp_bound);
+            multiStepUnsignedIntKernel<<<grid, B>>>(d_inp_inds, d_inp_vals, d_hist, N, low_bound, upp_bound);
         }
     }
 }
