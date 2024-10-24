@@ -1,7 +1,9 @@
-#ifndef HELPER_KERNELS_CU_H
-#define HELPER_KERNELS_CU_H
+#ifndef PREFIX_SUM_CUH
+#define PREFIX_SUM_CUH
 
-#define LLC_FRAC (3.0 / 7.0)
+#include "utils.cuh"
+#include <cuda_runtime.h>
+#include <cstdint>
 
 template<class T, uint32_t CHUNK>
 __device__ inline void
@@ -304,54 +306,6 @@ scan3rdKernel ( typename OP::RedElTp* d_out
     }
 }
 
-/// the multistep kernel for the histogram
-__global__ void
-multiStepKernel ( uint32_t* inp_inds
-                , float*    inp_vals
-                , volatile float* hist
-                , const uint32_t N
-                // the lower & upper bounds
-                // of the current chunk
-                , const uint32_t LB
-                , const uint32_t UB
-) {
-    const uint32_t gid = blockIdx.x*blockDim.x + threadIdx.x;
-
-    if(gid < N) {
-        uint32_t ind = inp_inds[gid];
-        if(ind < UB && ind >= LB) {
-            float val = inp_vals[gid];
-            atomicAdd((float*)&hist[ind], val);
-        }
-    }
-}
-
-
-template<int B>
-void multiStepHisto ( uint32_t* d_inp_inds
-                    , float*    d_inp_vals
-                    , float*    d_hist
-                    , const uint32_t N
-                    , const uint32_t H
-                    , const uint32_t LLC
-) {
-    // we use a fraction L of the last-level cache (LLC) to hold `hist`
-    const uint32_t CHUNK = ( LLC_FRAC * LLC ) / sizeof(float);
-    uint32_t num_partitions = (H + CHUNK - 1) / CHUNK;
-
-    cudaMemset(d_hist, 0, H * sizeof(float));
-    for (uint32_t k=0; k<num_partitions; k++) {
-        // we process only the indices falling in
-        // the integral interval [k*CHUNK, (k+1)*CHUNK)
-        uint32_t low_bound = k*CHUNK;
-        uint32_t upp_bound = min( (k+1)*CHUNK, H );
-
-        uint32_t grid = (N + B - 1) / B;
-        {
-            multiStepKernel<<<grid,B>>>(d_inp_inds, d_inp_vals, d_hist, N, low_bound, upp_bound);
-        }
-    }
-}
 
 
 /// Exclusive scan for a single block
@@ -406,7 +360,26 @@ scanExc1Block(typename OP::RedElTp* d_inout, uint32_t N) {
     }
 }
 
-/// scan3rdKernel but with exclusive scan instead
+/**
+ * scan3rdKernel but with exclusive scan instead
+ *
+ * `N` is the length of the input array
+ * `CHUNK` (the template parameter) is the number of elements to
+ *    be processed sequentially by a thread in one go.
+ * `num_seq_chunks` is used to sequentialize even more computation,
+ *    such that the number of blocks is <= 1024.
+ * `d_out` is the result array of length `N`
+ * `d_in`  is the input  array of length `N`
+ * `d_tmp` is the array holding the per-block scanned results.
+ *         it has number-of-CUDA-blocks elements, i.e., element
+ *         `d_tmp[i-1]` is the scanned prefix that needs to be
+ *         accumulated to each of the scanned elements corresponding
+ *         to block `i`.
+ * This kernels scans the elements corresponding to the current block
+ *   `i`---in number of num_seq_chunks*CHUNK*blockDim.x---and then it
+ *   accumulates to each of them the prefix of the previous block `i-1`,
+ *   which is stored in `d_tmp[i-1]`.
+ */
 template<class OP, int CHUNK>
 __global__ void
 ScanExc ( typename OP::RedElTp* d_out

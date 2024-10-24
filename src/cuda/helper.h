@@ -39,6 +39,11 @@ void randomInit(T* data, uint64_t size) {
 }
 
 
+void randomInds(uint32_t* data, uint64_t size, uint32_t M) {
+    for (uint64_t i = 0; i < size; i++)
+        data[i] = rand() % M;
+}
+
 template<class T>
 bool validate(T* A, T* B, uint64_t sizeAB){
     for(uint64_t i = 0; i < sizeAB; i++) {
