@@ -33,9 +33,9 @@ int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval 
 }
 
 template<class T>
-void randomInit(T* data, uint64_t size) {
+void randomInit(T* data, uint64_t size, uint32_t upper) {
     for (uint64_t i = 0; i < size; i++)
-        data[i] = rand() / (T)RAND_MAX;
+        data[i] = static_cast<T>(rand() % upper); // Generate random integers
 }
 
 
