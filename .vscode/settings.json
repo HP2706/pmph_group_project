@@ -18,6 +18,8 @@
         "stdexcept": "cpp",
         "tuple": "cpp",
         "type_traits": "cpp",
-        "cmath": "cpp"
+        "cmath": "cpp",
+        "cstdint": "cpp",
+        "functional": "cpp"
     }
 }
