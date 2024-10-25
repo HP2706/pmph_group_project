@@ -15,6 +15,34 @@ typedef long long  int64_t;
 typedef unsigned int uint32_t;
 
 
+uint32_t HWD;
+uint32_t BLOCK_SZ;
+
+void getDeviceInfo() {
+{
+        int nDevices;
+        cudaGetDeviceCount(&nDevices);
+
+        cudaDeviceProp prop;
+
+        cudaGetDeviceProperties(&prop, 0);
+        HWD = prop.maxThreadsPerMultiProcessor * prop.multiProcessorCount;
+        const uint32_t BLOCK_SZ = prop.maxThreadsPerBlock;
+        const uint32_t SH_MEM_SZ = prop.sharedMemPerBlock;
+        
+        {
+            printf("Device name: %s\n", prop.name);
+            printf("Number of hardware threads: %d\n", HWD);
+            printf("Block size: %d\n", BLOCK_SZ);
+            printf("Shared memory size: %d\n", SH_MEM_SZ);
+            puts("====");
+        }
+    }
+}
+
+
+
+
 int gpuAssert(cudaError_t code) {
   if(code != cudaSuccess) {
     printf("GPU Error: %s\n", cudaGetErrorString(code));

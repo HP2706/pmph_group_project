@@ -6,31 +6,6 @@
 #include <cstdint>
 
 
-
-
-// blockDim.y = T; blockDim.x = T
-// each block transposes a square T
-template <class ElTp, int T> 
-__global__ void
-coalescedTransposeKer(ElTp* A, ElTp* B, int heightA, int widthA) {
-  __shared__ ElTp tile[T][T+1];
-
-  int x = blockIdx.x * T + threadIdx.x;
-  int y = blockIdx.y * T + threadIdx.y;
-
-  if( x < widthA && y < heightA )
-      tile[threadIdx.y][threadIdx.x] = A[y*widthA + x];
-
-  __syncthreads();
-
-  x = blockIdx.y * T + threadIdx.x; 
-  y = blockIdx.x * T + threadIdx.y;
-
-  if( x < heightA && y < widthA )
-      B[y*heightA + x] = tile[threadIdx.x][threadIdx.y];
-}
-
-
 /********************/
 /*** Scan Kernels ***/
 /********************/

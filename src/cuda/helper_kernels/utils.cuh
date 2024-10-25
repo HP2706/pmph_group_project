@@ -12,29 +12,26 @@
 #include <sys/time.h>
 #include <time.h>
 
-uint32_t HWD;
-uint32_t BLOCK_SZ;
+// blockDim.y = T; blockDim.x = T
+// each block transposes a square T
+template <class ElTp, int T> 
+__global__ void
+coalescedTransposeKer(ElTp* A, ElTp* B, int heightA, int widthA) {
+  __shared__ ElTp tile[T][T+1];
 
-void getDeviceInfo() {
-{
-        int nDevices;
-        cudaGetDeviceCount(&nDevices);
+  int x = blockIdx.x * T + threadIdx.x;
+  int y = blockIdx.y * T + threadIdx.y;
 
-        cudaDeviceProp prop;
+  if( x < widthA && y < heightA )
+      tile[threadIdx.y][threadIdx.x] = A[y*widthA + x];
 
-        cudaGetDeviceProperties(&prop, 0);
-        HWD = prop.maxThreadsPerMultiProcessor * prop.multiProcessorCount;
-        const uint32_t BLOCK_SZ = prop.maxThreadsPerBlock;
-        const uint32_t SH_MEM_SZ = prop.sharedMemPerBlock;
-        
-        {
-            printf("Device name: %s\n", prop.name);
-            printf("Number of hardware threads: %d\n", HWD);
-            printf("Block size: %d\n", BLOCK_SZ);
-            printf("Shared memory size: %d\n", SH_MEM_SZ);
-            puts("====");
-        }
-    }
+  __syncthreads();
+
+  x = blockIdx.y * T + threadIdx.x; 
+  y = blockIdx.x * T + threadIdx.y;
+
+  if( x < heightA && y < widthA )
+      B[y*heightA + x] = tile[threadIdx.x][threadIdx.y];
 }
 
 
