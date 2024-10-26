@@ -1,72 +1,61 @@
 #ifndef HISTOGRAM_CUH
 #define HISTOGRAM_CUH
 
+#pragma once
 #include "utils.cuh"
-
+#include "../traits.h"  // Adjust the path based on your directory structure
 #include <cuda_runtime.h>
 #include <cstdint>
 #include <type_traits>
-#include "../traits.h"
 
 
-/// the multistep kernel for the histogram
-template<typename AnyUInt>
+// we dont expect to process more than 8 bits for the radix sort
+#define MaxH (1 << 8) // 256
+
+template<typename AnyUInt, uint32_t LGH>  // Make lgH a template parameter
 __global__ void
-multiStepGenericKernel (
-                const AnyUInt* inp_vals     // Input values
-                , volatile uint32_t* hist      // Histogram counts
-                , const uint32_t N         // Number of input elements
-                , const uint32_t LB        // Lower bound
-                , const uint32_t UB        // Upper bound
+RadixHistoKernel(
+    const AnyUInt* inp_vals,        // Input values
+    uint32_t* hist,                 // Removed volatile
+    const uint32_t N,               // Total number of elements
+    const uint32_t bit_pos,         // Starting bit position to examine
+    const uint32_t Q                // Elements per thread
 ) {
-    // Ensure UInt is less than or equal to 64 bytes
-    // this will not work for larger uints
-    static_assert(is_zero_extendable_to_uint32<AnyUInt>::value, "AnyUInt must be zero-extendable to uint32_t");
-    static_assert(sizeof(AnyUInt) <= 64, "AnyUInt must be 64 bytes or less");
+    static_assert(is_zero_extendable_to_uint32<AnyUInt>::value,
+        "UInt must be an unsigned type of 32 bits or less that can be zero-extended to uint32_t");
 
-    const uint32_t gid = blockIdx.x * blockDim.x + threadIdx.x;
+    // Now this static_assert works because LGH is known at compile time
+    static_assert(LGH <= 8, "LGH must be less than or equal to 8 as otherwise shared memory will overflow");
 
-    if(gid < N) {
-        // this differs from the original kernel in the way that 
-        // we can derive the index directly from the value
-        
-        // we cast to uint32_t (DONT KNOW WHAT THE PERF IMPLICATIONS ARE)
-        uint32_t ind = static_cast<uint32_t>(inp_vals[gid]);
+    const uint32_t tid = threadIdx.x;
+    const uint32_t bid = blockIdx.x;
+    
+    // Use LGH instead of lgH
+    const uint32_t H = 1 << LGH;
+    const uint32_t hist_offset = bid * H;
+    
+    // Initialize local histogram in shared memory
+    __shared__ uint32_t local_hist[MaxH]; 
 
-        if(ind < UB && ind >= LB) {
-            // we increment by one
-            // where in the original histogram implementation 
-            // we were summing by the values
-            atomicAdd((uint32_t*)&hist[ind], uint32_t(1));
+    if (tid < H) {
+        local_hist[tid] = 0;
+    }
+    __syncthreads();
+    
+    for (int q = 0; q < Q; q++) {
+        int idx = hist_offset + bid * Q + q;
+        if (idx < N) {
+            AnyUInt val = inp_vals[idx];
+            uint32_t bits = (static_cast<uint32_t>(val) >> bit_pos) & (H - 1);
+            atomicAdd(&local_hist[bits], 1u);
         }
     }
-}
+    __syncthreads();
 
-// Corresponding multiStepHisto function
-// we just make it generic over any unsigned integer type
-template<typename AnyUInt, int B>
-void multiStepGenericHisto (
-                    const AnyUInt* d_inp_vals
-                    , uint32_t* d_hist
-                    , const uint32_t N
-                    , const uint32_t H // number of bins
-                    , const uint32_t LLC
-) {
-    static_assert(is_zero_extendable_to_uint32<AnyUInt>::value, "AnyUInt must be zero-extendable to uint32_t");
-    // we use a fraction L of the last-level cache (LLC) to hold `hist`
-    const uint32_t CHUNK = (LLC_FRAC * LLC) / sizeof(AnyUInt);
-    uint32_t num_partitions = (H + CHUNK - 1) / CHUNK;
-
-    cudaMemset(d_hist, 0, H * sizeof(AnyUInt));
-    for (uint32_t k = 0; k < num_partitions; k++) {
-        // we process only the indices falling in
-        // the integral interval [k*CHUNK, (k+1)*CHUNK)
-        uint32_t low_bound = k * CHUNK;
-        uint32_t upp_bound = min((k + 1) * CHUNK, H);
-
-        uint32_t grid = (N + B - 1) / B;
-        multiStepGenericKernel<AnyUInt><<<grid,B>>>(d_inp_vals, d_hist, N, low_bound, upp_bound);
+    if (tid < H) {
+        hist[hist_offset + tid] = local_hist[tid];
     }
 }
+
 
 #endif
