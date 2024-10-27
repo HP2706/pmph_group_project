@@ -54,6 +54,30 @@ __host__ void runCub(
     cudaFree(d_out);
 }
 
+template<typename T, int BLOCK_THREADS, int ITEMS_PER_THREAD>
+void runRadixSort(
+    T* d_in, 
+    T* d_out, 
+    int size
+) {
+    const int B = 256;
+    const int Q = 22;
+    const int lgH = 4;
+    const int H = pow(2, lgH);
+    
+    int blocksAmount = 1;
+    
+    uint32_t* histogram;
+    cudaSucceeded(cudaMalloc((void**) &histogram, blocksAmount * H * sizeof(uint32_t)));
+    
+    makeHistogram<<<numBlocks, threadsPerBlock>>>(d_in, histogram, H, Q, B);
+    
+    uint32_t* transposedMatrix;
+    cudaSucceeded(cudaMalloc((void**) &histogram, blocksAmount * H * sizeof(uint32_t)));
+    transposeKernel<<<numBlocks, threadsPerBlock>>>(histogram, transposedMatrix, H, Q, B);
+}
+
+
 template<class T, int TL, int REG>
 void runAll ( int size ) {
 

@@ -8,7 +8,7 @@
 //we look at the lgH bits starting from least significant bits. And jumping with
 //currentPass*lgH bits each iteration. 
 template <class ElTp> 
-__global__ void makeHistogram(uint32_t* keysArray, uint32_t* histogramOut, uint32_t numberOfElems, uint8_t numberOfBits, uint32_t powNumberOfBits, uint32_t currentPass)
+__global__ void makeHistogram(  uint32_t* keysArray, uint32_t* histogramOut, uint32_t numberOfElems, uint32_t numberOfBits, uint32_t powNumberOfBits, uint32_t totalKeyArraySize)
 {
 /*    uint32_t mBuckets = blockDim.x*numberOfElems*numberOfBits//What size?//blockDim.x;
 
@@ -32,60 +32,62 @@ __global__ void makeHistogram(uint32_t* keysArray, uint32_t* histogramOut, uint3
     }  */
     
     //Shared memory for the histogram
-    extern __shared__ int local_histogram[]; 
+    extern __shared__ int localHistogram[]; 
     
     int tid = threadIdx.x;
     //Starting index for this block's elements
-    int block_start = blockIdx.x * blockDim.x * numberOfElems; 
+    int blockStart = blockIdx.x * blockDim.x + threadIdx.x;
 
-    //Initialize shared memory histogram
-    for (int i = tid; i < powNumberOfBits; i += blockDim.x) 
+    //Initialize shared memory histogram. We know from "produces a histogram of length H"
+    //the length.
+    for (int i = 0; i < powNumberOfBits; i += blockDim.x) 
     {
-        local_histogram[i] = 0;
+        localHistogram[i] = 0;
     }
     __syncthreads();
 
+    int numChunks = numberOfBits;
     //Process Q elements per thread
     for (int i = 0; i < numberOfElems; ++i) 
     {
-        if ((block_start + tid + i * blockDim.x))
+        if ((blockStart * numberOfElems + i) >= totalKeyArraySize)
         {
-            break;
+            return;
         }
-        int element = keysArray[block_start + tid + i * blockDim.x];
+        int element = keysArray[blockStart + tid * numberOfElems + i];
 
         //Process the element in 4-bit chunks (from least significant to most)
-        for (int j = 0; j < num_chunks; ++j) 
+        for (int j = 0; j < numChunks; ++j) 
         {
             int bitShift = j * numberOfBits;
             //Extract 4 bits at a time
             int extractedBits = (element >> bitShift) & (powNumberOfBits - 1);  
 
             //Update the histogram for the current chunk
-            atomicAdd(&local_histogram[extractedBits + j * powNumberOfBits], 1);
+            atomicAdd(&localHistogram[extractedBits/* + j * powNumberOfBits*/], 1);
         }
     }
     //I am not sure if this __syncthreads is necessary, but I am 99% it is
     __syncthreads();
 
     //Write local histogram to global memory
-    for (int i = tid; i < powNumberOfBits * num_chunks; i += blockDim.x) 
+    for (int i = 0; i < powNumberOfBits; i += blockDim.x) 
     {
-        histogramOut[blockIdx.x * powNumberOfBits * num_chunks + i] = local_histogram[i];
+        atomicAdd(&histogramOut[blockIdx.x * powNumberOfBits + i], localHistogram[i]);
     }
 }
     
 template <class ElTp> 
-__global__ void transposeKernel(uint32_t* inputMatrix, uint32_t* outputMatrix, uint32_t N, uint32_t powNumberOfBits)
+__global__ void transposeKernel(uint32_t* inputHist, uint32_t* outputMatrix, uint32_t numBlocks, uint32_t numChunks, uint32_t powNumberOfBits)
 {
     int bid  = blockIdx.x;
     int tid = threadIdx.x;
 
-    if (bid < num_blocks && tid < powNumberOfBits * num_chunks) 
+    if (bid < numBlocks && tid < powNumberOfBits * numChunks) 
     {
-        int inIndex = bid * powNumberOfBits * num_chunks + tid;
-        int outIndex = tid * num_blocks + bid;
-        transposed_histograms[outIndex] = histograms[inIndex];
+        int inIndex = bid * powNumberOfBits * numChunks + tid;
+        int outIndex = tid * numBlocks + bid;
+        outputMatrix[outIndex] = inputHist[inIndex];
     }
 
     //Calculate the row and column indices of the element
@@ -131,6 +133,7 @@ __global__ void scanKernel(uint32_t* input, uint32_t* output, int size)
     cudaFree(scanned);
 }
 
+template <class ElTp> 
 __global__ void finalKernel(uint32_t* d_input, uint32_t* d_output, uint32_t* d_histograms, uint32_t numElements, uint32_t numberOfElems, uint32_t numberOfBits, uint32_t powNumberOfBits) 
 {
     int blockSize = blockDim.x;
@@ -226,7 +229,8 @@ __global__ void finalKernel(uint32_t* d_input, uint32_t* d_output, uint32_t* d_h
 }
 
 template <class ElTp> 
-__global__ void RadixSortKer(ElTp* d_in, ElTp* d_out, int size) {
+__global__ void RadixSortKer(ElTp* d_in, ElTp* d_out, int size) 
+{
     
 }
 #endif
