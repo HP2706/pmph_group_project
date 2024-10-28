@@ -12,9 +12,11 @@
 #define MaxH (1 << 8) 
 
 
+
+
 template<typename ElTp, uint32_t LGH, uint32_t Q>  
 __global__ void
-HistoKernel1(
+Histo1(
     const ElTp* inp_vals,        // Input values
     uint32_t* hist,                 // array of length num_bins * gridDim.x
     const uint32_t N,               // Total number of elements
@@ -57,8 +59,26 @@ HistoKernel1(
     }
 }
 
-template<typename ElTp, uint32_t LGH>  
+
+template<typename ElTp, uint32_t LGH, uint32_t Q>  
 __global__ void
+HistoKernel1(
+    const ElTp* inp_vals,        // Input values
+    uint32_t* hist,                 // array of length num_bins * gridDim.x
+    const uint32_t N,               // Total number of elements
+    const uint32_t bit_pos         // Starting bit position to examine
+) {
+    Histo1<ElTp, LGH, Q>(
+        inp_vals,
+        hist,
+        N,
+        bit_pos
+    );
+}
+
+
+template<typename ElTp, uint32_t LGH>  
+__device__ void
 HistoKernel2(
     const ElTp* inp_vals,        // Input values
     uint32_t* hist,                 // array of length num_bins instead of num_bins X BLOCK_SIZE as in HistoKernel1

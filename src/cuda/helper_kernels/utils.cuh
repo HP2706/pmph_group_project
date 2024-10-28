@@ -14,9 +14,12 @@
 
 // blockDim.y = T; blockDim.x = T
 // each block transposes a square T
+
+// blockDim.y = T; blockDim.x = T
+// each block transposes a square T
 template <class ElTp, int T> 
 __global__ void
-coalescedTransposeKer(ElTp* A, ElTp* B, int heightA, int widthA) {
+coalsTransposeKer(ElTp* A, ElTp* B, int heightA, int widthA) {
   __shared__ ElTp tile[T][T+1];
 
   int x = blockIdx.x * T + threadIdx.x;
@@ -33,6 +36,7 @@ coalescedTransposeKer(ElTp* A, ElTp* B, int heightA, int widthA) {
   if( x < heightA && y < widthA )
       B[y*heightA + x] = tile[threadIdx.x][threadIdx.y];
 }
+
 
 
 
