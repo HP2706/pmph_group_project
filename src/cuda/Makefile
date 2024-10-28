@@ -3,7 +3,7 @@ CXX        = nvcc -O3
 #-arch=sm_60
 
 SRC_GPU = main-gpu.cu
-HELPERS = helper*.h traits.h helper_kernels/*.cuh
+HELPERS = helper*.h helper_kernels/*.cuh 
 KERNELS = cub_kernel.cuh
 EXEC_GPU= mmm-gpu
 

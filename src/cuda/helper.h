@@ -84,4 +84,39 @@ bool validate(T* A, T* B, uint64_t sizeAB){
     return true;
 }
 
+
+
+template <typename UInt, int BLOCK_SIZE>
+void PrepareMemory(
+    UInt** h_in, 
+    UInt** d_in, 
+    uint32_t** d_hist, 
+    uint32_t** h_hist,
+    uint32_t num_bins,
+    uint32_t SIZE,
+    uint32_t hist_size
+) {
+
+    *h_in = (UInt*) malloc(sizeof(UInt) * SIZE);
+    *h_hist = (uint32_t*) malloc(sizeof(uint32_t) * hist_size);
+
+    // initialize h_hist to 0
+    for (int i = 0; i < hist_size; i++) {
+        (*h_hist)[i] = 0;
+    }
+
+
+    // 2. allocate device memory
+    cudaMalloc((UInt**) d_in, sizeof(UInt) * SIZE); // Update the cudaMalloc call
+    cudaMalloc((uint32_t**) d_hist, sizeof(uint32_t) * hist_size);
+
+    // 3. initialize host memory
+    randomInit<UInt>(*h_in, SIZE, num_bins);
+
+    // 4. copy host memory to device
+    cudaMemcpy(*d_in, *h_in, sizeof(UInt) * SIZE, cudaMemcpyHostToDevice);
+    cudaMemcpy(*d_hist, *h_hist, sizeof(uint32_t) * hist_size, cudaMemcpyHostToDevice);
+}
+
+
 #endif

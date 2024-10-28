@@ -3,7 +3,6 @@
 
 #pragma once
 #include "utils.cuh"
-#include "../traits.h"  // Adjust the path based on your directory structure
 #include <cuda_runtime.h>
 #include <cstdint>
 #include <type_traits>
@@ -13,17 +12,15 @@
 #define MaxH (1 << 8) 
 
 
-template<typename AnyUInt, uint32_t LGH>  
+template<typename ElTp, uint32_t LGH, uint32_t Q>  
 __global__ void
 HistoKernel1(
-    const AnyUInt* inp_vals,        // Input values
+    const ElTp* inp_vals,        // Input values
     uint32_t* hist,                 // array of length num_bins * gridDim.x
     const uint32_t N,               // Total number of elements
-    const uint32_t bit_pos,         // Starting bit position to examine
-    const uint32_t Q                // Elements per thread
+    const uint32_t bit_pos         // Starting bit position to examine
 ) {
-    static_assert(is_zero_extendable_to_uint32<AnyUInt>::value,
-        "UInt must be an unsigned type of 32 bits or less that can be zero-extended to uint32_t");
+
     static_assert(LGH <= 8, "LGH must be less than or equal to 8 as otherwise shared memory will overflow");
 
     const uint32_t tid = threadIdx.x;
@@ -47,7 +44,7 @@ HistoKernel1(
     for (uint32_t q = 0; q < Q; q++) {
         uint32_t pos = start_pos + q * stride;
         if (pos < N) {
-            AnyUInt val = inp_vals[pos];
+            ElTp val = inp_vals[pos];
             uint32_t bits = (static_cast<uint32_t>(val) >> bit_pos) & (H - 1);
             atomicAdd(&local_hist[bits], 1);  // Need atomicAdd here for shared memory
         }
@@ -60,17 +57,15 @@ HistoKernel1(
     }
 }
 
-template<typename AnyUInt, uint32_t LGH>  
+template<typename ElTp, uint32_t LGH>  
 __global__ void
 HistoKernel2(
-    const AnyUInt* inp_vals,        // Input values
+    const ElTp* inp_vals,        // Input values
     uint32_t* hist,                 // array of length num_bins instead of num_bins X BLOCK_SIZE as in HistoKernel1
     const uint32_t N,               // Total number of elements
     const uint32_t bit_pos,         // Starting bit position to examine
     const uint32_t Q                // Elements per thread
 ) {
-    static_assert(is_zero_extendable_to_uint32<AnyUInt>::value,
-        "UInt must be an unsigned type of 32 bits or less that can be zero-extended to uint32_t");
     static_assert(LGH <= 8, "LGH must be less than or equal to 8 as otherwise shared memory will overflow");
 
     const uint32_t tid = threadIdx.x;
@@ -89,7 +84,7 @@ HistoKernel2(
     for (uint32_t q = 0; q < Q; q++) {
         uint32_t pos = (blockIdx.x * blockDim.x * Q) + (tid * Q) + q;
         if (pos < N) {
-            AnyUInt val = inp_vals[pos];
+            ElTp val = inp_vals[pos];
             uint32_t bits = (static_cast<uint32_t>(val) >> bit_pos) & (H - 1);
             atomicAdd(&local_hist[bits], 1u);
         }

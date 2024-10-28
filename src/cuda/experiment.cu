@@ -1,65 +1,26 @@
 #include "kernels.cuh"
-#include "helper.h"
-#include "traits.h"
-#include "helper_kernels/prefix_sum.cuh"
-#include <cstdint>
-#include <cstdio>
 #include <cuda_runtime.h>
-// Define the LLC size (Last Level Cache)
-#define LLC 41943040 // number taken from assignment 3-4
+#include <iostream>
+#include "helper.h"
+
 #define Q 22
-// Define the size of your input
-
-template <typename UInt, int BLOCK_SIZE>
-void PrepareMemory(
-    UInt** h_in, 
-    UInt** d_in, 
-    uint32_t** d_hist, 
-    uint32_t** h_hist,
-    uint32_t num_bins,
-    uint32_t SIZE,
-    uint32_t hist_size
-) {
-    static_assert(is_zero_extendable_to_uint32<UInt>::value, "UInt must be zero-extendable to uint32_t");
-
-    *h_in = (UInt*) malloc(sizeof(UInt) * SIZE);
-    *h_hist = (uint32_t*) malloc(sizeof(uint32_t) * hist_size);
-
-    // initialize h_hist to 0
-    for (int i = 0; i < hist_size; i++) {
-        (*h_hist)[i] = 0;
-    }
-
-
-    // 2. allocate device memory
-    cudaMalloc((UInt**) d_in, sizeof(UInt) * SIZE); // Update the cudaMalloc call
-    cudaMalloc((uint32_t**) d_hist, sizeof(uint32_t) * hist_size);
-
-    // 3. initialize host memory
-    randomInit<UInt>(*h_in, SIZE, num_bins);
-
-    // 4. copy host memory to device
-    cudaMemcpy(*d_in, *h_in, sizeof(UInt) * SIZE, cudaMemcpyHostToDevice);
-    cudaMemcpy(*d_hist, *h_hist, sizeof(uint32_t) * hist_size, cudaMemcpyHostToDevice);
-}
-
 
 int main() {
-    srand(2006);
- 
-    const int N_BITS = 8;
-    const unsigned int NUM_BINS = 1 << N_BITS; // 2^8
-    const unsigned int SIZE = pow(10, 8);
-        // Example launch configuration
-    const uint32_t BLOCK_SIZE = 256;
 
-    
-    
     uint32_t* h_in;
     uint32_t* d_in;
+    uint32_t* d_out;
     uint32_t* d_histogram;
-    uint32_t* h_histogram; 
+    uint32_t* h_histogram;
+    
+    uint32_t* d_histogram_transposed;
+    uint32_t* h_histogram_transposed;
+    
 
+    const uint32_t SIZE = 1000000;
+    const uint32_t NUM_BINS = 1 << 8;
+    const uint32_t BLOCK_SIZE = 1024;
+    
     // Calculate grid size based on input size and elements per thread
     const uint32_t grid_size = (SIZE + (BLOCK_SIZE * Q - 1)) / (BLOCK_SIZE * Q);
     // Change the histogram size calculation
@@ -75,39 +36,32 @@ int main() {
         hist_size
     );
 
-
-
-    // Launch kernel
-    HistoKernel1<uint32_t, N_BITS><<<grid_size, BLOCK_SIZE>>>(
-        d_in, d_histogram, SIZE, 0, Q);
-        
-    // Add error checking
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        printf("Kernel launch error: %s\n", cudaGetErrorString(err));
-        return 1;
+    // initialize h_histogram_transposed to 0
+    h_histogram_transposed = (uint32_t*) malloc(sizeof(uint32_t) * hist_size);
+    for (int i = 0; i < hist_size; i++) {
+        h_histogram_transposed[i] = 0;
     }
 
-    cudaMemcpy(h_histogram, d_histogram, sizeof(uint32_t) * hist_size, cudaMemcpyDeviceToHost);
+    cudaMalloc((uint32_t**) &d_histogram_transposed, sizeof(uint32_t) * hist_size);
+    cudaMemcpy(d_histogram_transposed, h_histogram_transposed, sizeof(uint32_t) * hist_size, cudaMemcpyHostToDevice);
+    cudaMemset(d_histogram_transposed, 0, sizeof(uint32_t) * hist_size);
 
-    printf("Hist size: %d\n", hist_size);
-    uint32_t sum = 0;
-    for (int b = 0; b < hist_size; b++) {
-        //printf("Final bin for one block %d: %d\n", b, h_histogram[b]);
-        sum += h_histogram[b];
-    }
+    // initialize d_out to 0
+    cudaMalloc((uint32_t**) &d_out, sizeof(uint32_t) * SIZE);
+    cudaMemset(d_out, 0, sizeof(uint32_t) * SIZE);
 
 
-    printf("sum: %d vs SIZE: %d\n", sum, SIZE);
 
-    // there might be a bug in the histogram code as the sum and SIZE are not equal
-    // HOWEVER, this is also the case for the assignment 3-4 code, which we expect to work
-    // its a bit weird but we will take it up with cosmin
-    // for (int i = 0; i < num_bins; i++) {
-    //     printf("num bin %d: %d\n", i, h_hist[i]);
-    // }
-    free(h_in);
-    free(h_histogram);
-    cudaFree(d_in);
-    cudaFree(d_histogram);
+
+    CountSort<uint32_t, grid_size, BLOCK_SIZE>(
+        d_in,
+        d_out,
+        d_histogram,
+        d_histogram_transposed,
+        SIZE,
+        0
+    );
+
+    return 0;
+
 }
