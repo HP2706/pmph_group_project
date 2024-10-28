@@ -18,6 +18,9 @@ void PrepareMemory(
     UInt** d_in, 
     uint32_t** d_hist, 
     uint32_t** h_hist,
+    uint32_t** tranposedHistogram,
+    uint32_t** tranposedHistogramCPU,
+    uint32_t** h_tranposedHistogram,
     uint32_t num_bins,
     uint32_t SIZE,
     uint32_t hist_size
@@ -26,7 +29,8 @@ void PrepareMemory(
 
     *h_in = (UInt*) malloc(sizeof(UInt) * SIZE);
     *h_hist = (uint32_t*) malloc(sizeof(uint32_t) * hist_size);
-
+    *tranposedHistogramCPU = (uint32_t*) malloc(sizeof(uint32_t) * hist_size);
+    *h_tranposedHistogram = (uint32_t*) malloc(sizeof(uint32_t) * hist_size);
     // initialize h_hist to 0
     for (int i = 0; i < hist_size; i++) {
         (*h_hist)[i] = 0;
@@ -37,6 +41,7 @@ void PrepareMemory(
     cudaMalloc((UInt**) d_in, sizeof(UInt) * SIZE); // Update the cudaMalloc call
     cudaMalloc((uint32_t**) d_hist, sizeof(uint32_t) * hist_size);
 
+    cudaMalloc((uint32_t**) tranposedHistogram, sizeof(uint32_t) * hist_size);
 
 
     // 3. initialize host memory
@@ -45,16 +50,17 @@ void PrepareMemory(
     // 4. copy host memory to device
     cudaMemcpy(*d_in, *h_in, sizeof(UInt) * SIZE, cudaMemcpyHostToDevice);
     cudaMemcpy(*d_hist, *h_hist, sizeof(uint32_t) * hist_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(*tranposedHistogram, *h_hist, sizeof(uint32_t) * hist_size, cudaMemcpyHostToDevice);
 }
 
 void transposeCPU(uint32_t* input, uint32_t* output, int numRows, int numCols) 
 {
-    //segmentation fault happens here!
     for (int i = 0; i < numRows; ++i) 
     {
         for (int j = 0; j < numCols; ++j) 
-        {
-            output[j * numRows + i] = input[i * numCols + j];
+        { 
+            uint32_t inputVal = input[i * numCols + j];
+            output[j * numRows + i] = inputVal; 
         }
     }
 }
@@ -98,6 +104,10 @@ int main() {
     uint32_t* d_in;
     uint32_t* d_hist;
     uint32_t* h_hist; 
+    
+    uint32_t* tranposedHistogram;
+    uint32_t* h_tranposedHistogram;
+    uint32_t* tranposedHistogramCPU;    
     const int BLOCK_SIZE = 256;
 
     const uint32_t hist_size = num_bins * BLOCK_SIZE;
@@ -107,6 +117,9 @@ int main() {
         &d_in, 
         &d_hist,
         &h_hist,
+        &tranposedHistogram,
+        &tranposedHistogramCPU,
+        &h_tranposedHistogram,
         num_bins,
         SIZE,
         hist_size
@@ -161,24 +174,9 @@ int main() {
     printf("sum: %d vs SIZE: %d\n", sum, SIZE);
     
     //Transpose kernel
-
-    printf("A\n");
-    uint32_t* tranposedHistogram;
-    cudaMalloc((uint32_t**) &tranposedHistogram, sizeof(uint32_t) * hist_size);
-
-
-    printf("B\n");
     TransposeHistoKernel<uint32_t, N_BITS><<<grid, block>>>(d_hist, tranposedHistogram, num_bins, BLOCK_SIZE);
-
-    printf("C\n");
-    //For verification
-    uint32_t* tranposedHistogramCPU;    
-    cudaMalloc((uint32_t**) &tranposedHistogramCPU, sizeof(uint32_t) * hist_size);
-
-    printf("D\n");
-
-
-    verifyTranspose(d_hist, tranposedHistogramCPU, tranposedHistogram, num_bins, BLOCK_SIZE);
+    cudaMemcpy(h_tranposedHistogram, tranposedHistogram, sizeof(uint32_t) * hist_size, cudaMemcpyDeviceToHost);
+    verifyTranspose(h_hist, tranposedHistogramCPU, h_tranposedHistogram, num_bins, BLOCK_SIZE);
 
 
     // there might be a bug in the histogram code as the sum and SIZE are not equal
