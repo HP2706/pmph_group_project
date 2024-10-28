@@ -8,77 +8,50 @@
 #include <cstdint>
 #include <type_traits>
 
+#define MaxH (1 << 8) 
 
 template<typename AnyUInt, uint32_t LGH>
 __global__ void
-RadixHistoKernel(uint32_t* keysArray, uint32_t* histogramOut, uint32_t numberOfElems, uint32_t numberOfBits, uint32_t powNumberOfBits, uint32_t totalKeyArraySize)
-{
-/*    uint32_t mBuckets = blockDim.x*numberOfElems*numberOfBits//What size?//blockDim.x;
+RadixHistoKernel(const AnyUInt* inp_vals,        // Input values
+                 uint32_t* hist,                 // array of length num_bins instead of num_bins X BLOCK_SIZE as in HistoKernel1
+                 const uint32_t N,               // Total number of elements
+                 const uint32_t bit_pos,         // Starting bit position to examine
+                 const uint32_t Q                // Elements per thread
+) {
+    static_assert(is_zero_extendable_to_uint32<AnyUInt>::value,
+        "UInt must be an unsigned type of 32 bits or less that can be zero-extended to uint32_t");
+    static_assert(LGH <= 8, "LGH must be less than or equal to 8 as otherwise shared memory will overflow");
 
-    //Init a bucket array of size blockDim*bits*elems processed per block:
-    uint32_t bucketArray[];
-    for (uint32_t i = 0; i < mBuckets; ++i)
-    {
-        //Init array
-        bucketArray[i] = 0;
-    }
-    //int currentFourBits = (number >> i) & 0b111
-    int currentBitsOffset = currentPass*numberOfBits;
-    //We add this for-loop to allow for processing of multiple bits at once!
-    for (uint32_t i = 0; i < numberOfBits; ++i)
-    {
-        uint32_t key = keysArray[blockDim.x * i + threadIdx.x + (blockIdx.x * blockDim.x * numberOfBits)];
-        //Extract only four bits starting from the LSB
-        uint32_t extractedBits = (key >> currentBitsOffset) & 0b1111;
-        //Update our bucket array at the correct position
-        bucketArray[extractedBits * blockDim.x * numberOfBits + blockDim.x * i + threadIdx.x]++;
-    }  */
-    
-    //Shared memory for the histogram
-    extern __shared__ uint32_t localHistogram[]; 
-//    __shared__ uint32_t localHistogram[256]; 
-    int tid = threadIdx.x;
-    //Starting index for this block's elements
-    int blockStart = blockIdx.x * blockDim.x + threadIdx.x;
+    const uint32_t tid = threadIdx.x;
+    const uint32_t bid = blockIdx.x;
+    const uint32_t idx = bid * blockDim.x + tid;
+    const uint32_t H = 1 << LGH;
 
-    //Initialize shared memory histogram. We know from "produces a histogram of length H"
-    //the length.
-    for (int i = tid; i < powNumberOfBits; i += blockDim.x) 
-    {
-        localHistogram[i] = 0;
+    __shared__ uint32_t local_hist[MaxH]; 
+    if (tid < H) {
+        local_hist[tid] = 0;
     }
     __syncthreads();
 
-    int numChunks = numberOfBits;
-    //Process Q elements per thread
-    for (int i = 0; i < numberOfElems; ++i) 
-    {
-        if ((blockStart * numberOfElems + i) >= totalKeyArraySize)
-        {
-            return;
-        }
-        int element = keysArray[blockIdx.x * blockDim.x * numberOfElems + tid * numberOfElems + i];
-
-        //Process the element in 4-bit chunks (from least significant to most)
-        for (int j = 0; j < numChunks; ++j) 
-        {
-            int bitShift = j * numChunks;
-            //Extract 4 bits at a time
-            int extractedBits = (element >> bitShift) & (powNumberOfBits - 1);  
-
-            //Update the histogram for the current chunk
-            atomicAdd(&localHistogram[extractedBits], 1);
+    // Process Q elements per thread in a coalesced manner
+    #pragma unroll
+    for (uint32_t q = 0; q < Q; q++) {
+        uint32_t pos = (blockIdx.x * blockDim.x * Q) + (tid * Q) + q;
+        if (pos < N) {
+            AnyUInt val = inp_vals[pos];
+            uint32_t bits = (static_cast<uint32_t>(val) >> bit_pos) & (H - 1);
+            atomicAdd(&local_hist[bits], 1u);
         }
     }
-    //I am not sure if this __syncthreads is necessary, but I am 99% it is
     __syncthreads();
 
-    //Write local histogram to global memory
-    for (int i = tid; i < powNumberOfBits; i += blockDim.x) 
-    {
-        atomicAdd(&histogramOut[blockIdx.x * powNumberOfBits + i], localHistogram[i]);
+    // Accumulate results using atomic operations to global memory
+    if (tid < H) {
+        atomicAdd(&hist[tid], local_hist[tid]);
     }
 }
+
+
 
 
 #endif

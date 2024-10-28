@@ -90,10 +90,9 @@ int main() {
     RadixHistoKernel<uint32_t, N_BITS><<<grid, block>>>(
         d_in,                
         d_hist, 
-        22,
-        8,
-        256,
-        SIZE
+        SIZE,
+        0,
+        Q
     );
     
     // Add error checking
@@ -108,7 +107,10 @@ int main() {
     printf("Hist size: %d\n", hist_size);
     uint32_t sum = 0;
     for (int b = 0; b < hist_size; b++) {
-        printf("Final bin for one block %d: %d\n", b, h_hist[b]);
+        /*if (h_hist[b] > 0)
+        {
+            printf("Final bin for one block %d: %d\n", b, h_hist[b]);
+        }*/
         sum += h_hist[b];
     }
 
