@@ -51,7 +51,19 @@ RadixHistoKernel(const AnyUInt* inp_vals,        // Input values
     }
 }
 
+template<typename AnyUInt, uint32_t LGH>
+__global__ void TransposeHistoKernel(uint32_t* inputHist, uint32_t* outputMatrix, uint32_t numChunks, uint32_t numBlocks)
+{
+    // Calculate row and column indices
+    uint32_t row = blockIdx.y * blockDim.y + threadIdx.y;
+    uint32_t col = blockIdx.x * blockDim.x + threadIdx.x;
 
-
+    // Ensure within bounds
+    if (row < numChunks && col < numBlocks) 
+    {
+        // Transpose: move element from inputHist to outputMatrix in transposed position
+        outputMatrix[col * numChunks + row] = inputHist[row * numBlocks + col];
+    }
+}
 
 #endif

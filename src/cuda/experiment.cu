@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cuda_runtime.h>
+#include <iostream>
+
 // Define the LLC size (Last Level Cache)
 #define LLC 41943040 // number taken from assignment 3-4
 #define Q 22
@@ -35,6 +37,8 @@ void PrepareMemory(
     cudaMalloc((UInt**) d_in, sizeof(UInt) * SIZE); // Update the cudaMalloc call
     cudaMalloc((uint32_t**) d_hist, sizeof(uint32_t) * hist_size);
 
+
+
     // 3. initialize host memory
     randomInit<UInt>(*h_in, SIZE, num_bins);
 
@@ -43,6 +47,44 @@ void PrepareMemory(
     cudaMemcpy(*d_hist, *h_hist, sizeof(uint32_t) * hist_size, cudaMemcpyHostToDevice);
 }
 
+void transposeCPU(uint32_t* input, uint32_t* output, int numRows, int numCols) 
+{
+    //segmentation fault happens here!
+    for (int i = 0; i < numRows; ++i) 
+    {
+        for (int j = 0; j < numCols; ++j) 
+        {
+            output[j * numRows + i] = input[i * numCols + j];
+        }
+    }
+}
+
+void verifyTranspose(uint32_t* cpuInput, uint32_t* cpuOutput, uint32_t* gpuOutput, int numRows, int numCols)
+{
+    printf("E\n");
+    transposeCPU(cpuInput, cpuOutput, numRows, numCols);
+    printf("F\n");
+    bool success = true;
+    for (int i = 0; i < numRows * numCols; ++i) 
+    {
+        if (cpuOutput[i] != gpuOutput[i]) 
+        {
+            success = false;
+            std::cout << "Mismatch at index " << i << ": CPU " << cpuOutput[i] 
+                      << " != GPU " << gpuOutput[i] << "\n";
+        }
+    }
+    printf("G\n");
+    
+    if (success) 
+    {
+        std::cout << "Transpose verification succeeded.\n";
+    } 
+    else 
+    {
+        std::cout << "Transpose verification failed.\n";
+    }
+}
 
 int main() {
     srand(2006);
@@ -63,7 +105,7 @@ int main() {
     PrepareMemory<uint32_t, BLOCK_SIZE>(
         &h_in, 
         &d_in, 
-        &d_hist, 
+        &d_hist,
         &h_hist,
         num_bins,
         SIZE,
@@ -95,6 +137,7 @@ int main() {
         Q
     );
     
+    
     // Add error checking
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -116,6 +159,27 @@ int main() {
 
 
     printf("sum: %d vs SIZE: %d\n", sum, SIZE);
+    
+    //Transpose kernel
+
+    printf("A\n");
+    uint32_t* tranposedHistogram;
+    cudaMalloc((uint32_t**) &tranposedHistogram, sizeof(uint32_t) * hist_size);
+
+
+    printf("B\n");
+    TransposeHistoKernel<uint32_t, N_BITS><<<grid, block>>>(d_hist, tranposedHistogram, num_bins, BLOCK_SIZE);
+
+    printf("C\n");
+    //For verification
+    uint32_t* tranposedHistogramCPU;    
+    cudaMalloc((uint32_t**) &tranposedHistogramCPU, sizeof(uint32_t) * hist_size);
+
+    printf("D\n");
+
+
+    verifyTranspose(d_hist, tranposedHistogramCPU, tranposedHistogram, num_bins, BLOCK_SIZE);
+
 
     // there might be a bug in the histogram code as the sum and SIZE are not equal
     // HOWEVER, this is also the case for the assignment 3-4 code, which we expect to work
