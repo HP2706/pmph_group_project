@@ -16,17 +16,17 @@ int main() {
 
     // setup params
 
-    const uint16_t input_size = 1000000;
-    const uint16_t Q = 22;
-    const uint16_t lgH = 8;
-    const uint16_t BLOCK_SIZE = 256;
-    const uint16_t T = 6;
-    const uint16_t ELEMS_PER_THREAD_SCAN = 22;
-    const uint16_t GRID_SIZE = (input_size + (BLOCK_SIZE * Q - 1)) / (BLOCK_SIZE * Q);
+    const uint32_t input_size = 1000000;
+    const uint32_t Q = 22;
+    const uint32_t lgH = 8;
+    const uint32_t BLOCK_SIZE = 256;
+    const uint32_t T = 6;
+    const uint32_t ELEMS_PER_THREAD_SCAN = 22;
+    const uint32_t GRID_SIZE = (input_size + (BLOCK_SIZE * Q - 1)) / (BLOCK_SIZE * Q);
 
     using P = Params<
         uint8_t, 
-        uint16_t, 
+        uint32_t, 
         Q, 
         lgH, 
         GRID_SIZE, 

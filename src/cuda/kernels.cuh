@@ -38,7 +38,8 @@ void CountSort(
     typename P::ElementType* d_out, 
     typename P::UintType* d_hist,
     typename P::UintType* d_hist_transposed,
-    typename P::UintType* d_hist_scanned,
+    typename P::UintType* d_hist_transposed_scanned_transposed, // double transposed histogram
+    typename P::UintType* d_hist_transposed_scanned,
     typename P::UintType* d_tmp,
     uint32_t N,
     uint32_t bit_pos
@@ -60,11 +61,10 @@ void CountSort(
         P::GRID_SIZE
     );
 
-
     scanInc<Add<typename P::UintType>>(
         P::BLOCK_SIZE, // Block size
         P::HB,          // Histogram size
-        d_hist_scanned,     // output: scanned histogram
+        d_hist_transposed_scanned,     // output: scanned histogram
         d_hist_transposed,
         d_tmp              // temporary storage
     );
@@ -72,15 +72,16 @@ void CountSort(
     // we do inclusive scan here
     // transpose back to original histogram
     transpose_kernel<P>(
-        d_hist_scanned,
-        d_hist_transposed, // we write back to the transposed histogram
+        d_hist_transposed_scanned,
+        d_hist_transposed_scanned_transposed, // we write back to the double transposed histogram that is now scanned
         P::GRID_SIZE,
         P::H
     );
 
     RankPermuteKer<P> <<<P::GRID_SIZE, P::BLOCK_SIZE>>> 
     (
-        d_hist_transposed,
+        d_hist,
+        d_hist_transposed_scanned_transposed,
         bit_pos,
         N,
         d_in,
@@ -96,14 +97,14 @@ void RadixSortKer(
 ) {
     typename P::UintType* d_hist;
     typename P::UintType* d_hist_transposed;
-    typename P::UintType* d_hist_scanned;
+    typename P::UintType* d_hist_transposed_scanned;
+    typename P::UintType* d_hist_transposed_scanned_transposed;
+    typename P::UintType* d_tmp;
+
     cudaMalloc((void**) &d_hist, sizeof(typename P::UintType) * P::HB);
     cudaMalloc((void**) &d_hist_transposed, sizeof(typename P::UintType) * P::HB);
-    cudaMalloc((void**) &d_hist_scanned, sizeof(typename P::UintType) * P::HB);
-
-
-    const int total_elements = P::H * P::GRID_SIZE;
-    typename P::UintType* d_tmp;
+    cudaMalloc((void**) &d_hist_transposed_scanned, sizeof(typename P::UintType) * P::HB);
+    cudaMalloc((void**) &d_hist_transposed_scanned_transposed, sizeof(typename P::UintType) * P::HB);
     cudaMalloc((void**) &d_tmp, sizeof(typename P::UintType) * P::BLOCK_SIZE);
     
 
@@ -114,8 +115,9 @@ void RadixSortKer(
             d_out, 
             d_hist, 
             d_hist_transposed, 
-            d_hist_scanned, 
-            d_tmp,
+            d_hist_transposed_scanned_transposed,
+            d_hist_transposed_scanned, 
+            d_tmp, 
             size, 
             bit_pos
         );
@@ -131,13 +133,15 @@ void RadixSortKer(
         // zero out the histogram arrays
         cudaMemset(d_hist, 0, sizeof(P::UintType) * P::BINS * P::GRID_SIZE);
         cudaMemset(d_hist_transposed, 0, sizeof(P::UintType) * P::BINS * P::GRID_SIZE);
-        cudaMemset(d_hist_scanned, 0, sizeof(P::UintType) * P::BINS * P::GRID_SIZE);
+        cudaMemset(d_hist_transposed_scanned, 0, sizeof(P::UintType) * P::BINS * P::GRID_SIZE);
+        cudaMemset(d_hist_transposed_scanned_transposed, 0, sizeof(P::UintType) * P::BINS * P::GRID_SIZE);
         cudaMemset(d_tmp, 0, sizeof(P::UintType) * P::BLOCK_SIZE);
     }
 
     cudaFree(d_hist);
     cudaFree(d_hist_transposed);
-    cudaFree(d_hist_scanned);
+    cudaFree(d_hist_transposed_scanned);
+    cudaFree(d_hist_transposed_scanned_transposed);
     cudaFree(d_tmp);
 
 }

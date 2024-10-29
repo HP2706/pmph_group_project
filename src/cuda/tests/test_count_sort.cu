@@ -40,13 +40,16 @@ __host__ void test_count_sort(
 
     typename P::UintType* d_hist;
     typename P::UintType* d_hist_transposed;
-    typename P::UintType* d_hist_scanned;
+    typename P::UintType* d_hist_transposed_scanned_transposed;
+    typename P::UintType* d_hist_transposed_scanned;
     typename P::UintType* d_tmp;
 
     // cub allocations
     typename P::ElementType* cub_d_in;
     typename P::ElementType* cub_d_out;
     typename P::ElementType* cub_h_out;
+
+    printf("allocating memory\n");
 
     allocateAndInitialize<typename P::ElementType>(
         &h_in,
@@ -66,7 +69,7 @@ __host__ void test_count_sort(
         nullptr,
         &d_hist,
         hist_size,
-        false // we initialize to 0
+        false // we initialize to random values
     );
 
     allocateAndInitialize<typename P::UintType>(
@@ -78,7 +81,14 @@ __host__ void test_count_sort(
 
     allocateAndInitialize<typename P::UintType>(
         nullptr,
-        &d_hist_scanned,
+        &d_hist_transposed_scanned,
+        hist_size,
+        false // we initialize to 0
+    );
+
+    allocateAndInitialize<typename P::UintType>(
+        nullptr,
+        &d_hist_transposed_scanned_transposed,
         hist_size,
         false // we initialize to 0
     );
@@ -95,53 +105,44 @@ __host__ void test_count_sort(
         d_out, 
         d_hist, 
         d_hist_transposed, 
-        d_hist_scanned, 
+        d_hist_transposed_scanned_transposed,
+        d_hist_transposed_scanned, 
         d_tmp, 
         input_size, 
         0 // we use a bit position of 0 for this test
     );
 
+    
     cudaMemcpy(h_out, d_out, sizeof(typename P::ElementType) * input_size, cudaMemcpyDeviceToHost);
 
     {
+        printf("freeing memory\n");
         // we free some memory
         cudaFree(d_out);
         cudaFree(d_hist);
         cudaFree(d_hist_transposed);
-        cudaFree(d_hist_scanned);
+        cudaFree(d_hist_transposed_scanned);
+        cudaFree(d_hist_transposed_scanned_transposed);
         cudaFree(d_tmp);
     }
 
-
+    printf("cub allocations\n");
+    
     // cub allocations
     cudaMalloc((void**)&cub_d_in, sizeof(typename P::ElementType) * input_size);
     // we keep an array of the input in host memory to compare the results
     cudaMemcpy(cub_d_in, h_in, sizeof(typename P::ElementType) * input_size, cudaMemcpyHostToDevice);
 
-    // we check cub_d_in == d_in
-    // this is just a dummy check
-    assert(validate(cub_d_in, d_in, input_size));
-    
-    
+    printf("allocating cub_h_out, cub_d_out\n");
     allocateAndInitialize<typename P::ElementType>(
         &cub_h_out,
         &cub_d_out,
         input_size,
         false 
     );
-    
-    CubKer<
-        typename P::ElementType, 
-        P::GRID_SIZE, 
-        P::BLOCK_SIZE, 
-        P::Q
-    >(
-        cub_d_in,
-        cub_d_out,
-        input_size
-    );
 
-    /* 
+
+    printf("computing cub kernel\n");
     CUBSortKernel<
         typename P::ElementType, 
         P::BLOCK_SIZE, 
@@ -151,10 +152,18 @@ __host__ void test_count_sort(
         cub_d_in,
         cub_d_out,
         input_size
-    ); */
+    );
 
     cudaMemcpy(cub_h_out, cub_d_out, sizeof(typename P::ElementType) * input_size, cudaMemcpyDeviceToHost);
+    
+
+
+    printf("validating results\n");
     assert(validate(cub_h_out, h_out, input_size));
+
+    for (uint32_t i = 0; i < input_size; i++) {
+        printf("%d: %d, %d\n", i, h_out[i], cub_h_out[i]);
+    }
 
     {
         // we free some gpu-memory
@@ -166,6 +175,7 @@ __host__ void test_count_sort(
         free(h_in);
         free(h_out);
     }
+   
    
 }
 

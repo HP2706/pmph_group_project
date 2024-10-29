@@ -129,9 +129,10 @@ void allocateAndInitialize(
             cudaMemcpy(*d_ptr, *h_ptr, sizeof(T) * N, cudaMemcpyHostToDevice);
         } else {
             if (initRnd) {
-                randomInit<T>(*d_ptr, N, 1000); // Using 1000 as default upper bound
+                // raise an error
+                throw std::runtime_error("Cannot randomly initialize device memory without host memory");
             } else {
-                memset(*d_ptr, 0, sizeof(T) * N);
+                cudaMemset(*d_ptr, 0, sizeof(T) * N);
             }
         }
     }
