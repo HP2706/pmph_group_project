@@ -12,6 +12,7 @@
 #include "../kernels.cuh"
 
 
+
 void transposeCPU(uint32_t* input, uint32_t* output, int numRows, int numCols) 
 {
     for (int i = 0; i < numRows; ++i) 
@@ -55,71 +56,55 @@ void verifyTranspose(uint32_t* cpuInput, uint32_t* cpuOutput, uint32_t* gpuOutpu
 
 
 //Should probably be moved to separate file...
-template<uint32_t BLOCK_SIZE>
+template<typename P>
 void test_verify_transpose(
     uint32_t input_size
 )
 {
-    uint32_t* h_in;
-    uint32_t* d_in;
-    uint32_t* d_out;
-    uint32_t* d_histogram;
-    uint32_t* h_histogram;
-    uint32_t* d_histogram_transposed;
-    uint32_t* d_hist_out;
-    uint32_t* h_histogram_transposed;
-    uint32_t* tranposedHistogramCPU;
-    
-
-    uint32_t NUM_BINS = 1 << 8;
-    const uint32_t Q = 22;
-    const uint32_t lgH = 8;
-    
+    static_assert(is_params<P>::value, "P must be a Params instance");
     // Calculate grid size based on input size and elements per thread
-    const uint32_t grid_size = (input_size + (BLOCK_SIZE * Q - 1)) / (BLOCK_SIZE * Q);
-    uint32_t hist_size = NUM_BINS * grid_size;
 
+    uint32_t hist_size = P::H * P::GRID_SIZE;
+    
+    // ptr allocations
+    
+    typename P::UintType* h_histogram_transposed;
+    typename P::UintType* d_histogram_transposed;
 
-    PrepareMemory<uint32_t, BLOCK_SIZE>(
-        &h_in, 
-        &d_in, 
-        &d_histogram, 
-        &h_histogram,
-        NUM_BINS,
-        input_size,
-        hist_size
+    typename P::UintType* h_histogram;
+    typename P::UintType* d_histogram;
+
+    typename P::UintType* cpu_h_histogram_transposed;
+    
+
+    allocateAndInitialize<typename P::UintType>(
+        &h_histogram_transposed, 
+        &d_histogram_transposed, 
+        hist_size,
+        false // we initialize to 0
     );
-    
-    uint32_t* h_hist_out = (uint32_t*) malloc(sizeof(uint32_t) * hist_size);
-    
-    // initialize h_histogram_transposed to 0
-    h_histogram_transposed = (uint32_t*) malloc(sizeof(uint32_t) * hist_size);
-    tranposedHistogramCPU = (uint32_t*) malloc(sizeof(uint32_t) * hist_size);
+
+    allocateAndInitialize<typename P::UintType>(
+        &h_histogram, 
+        &d_histogram, 
+        hist_size,
+        true // we do not initialize to 0
+    );
+
+
+    // initialize cpu histogram transposed to 0
+    cpu_h_histogram_transposed = (uint32_t*) malloc(sizeof(uint32_t) * hist_size);
     for (int i = 0; i < hist_size; i++) {
-        h_histogram_transposed[i] = 0;
-        h_hist_out[i] = 0;
+        cpu_h_histogram_transposed[i] = 0;
     }
-    
-    cudaMalloc((uint32_t**) &d_hist_out, sizeof(uint32_t) * hist_size);
-    cudaMemcpy(d_hist_out, h_hist_out, sizeof(uint32_t) * hist_size, cudaMemcpyHostToDevice);
-    cudaMemset(d_hist_out, 0, sizeof(uint32_t) * hist_size);
 
-
-    cudaMalloc((uint32_t**) &d_histogram_transposed, sizeof(uint32_t) * hist_size);
-    cudaMemcpy(d_histogram_transposed, h_histogram_transposed, sizeof(uint32_t) * hist_size, cudaMemcpyHostToDevice);
-    cudaMemset(d_histogram_transposed, 0, sizeof(uint32_t) * hist_size);
-    
-    constexpr uint32_t GRID_SIZE = 256;
-    constexpr uint32_t BLOCK_DIM = 256;
-    using SortParams = Params<uint32_t, uint32_t, Q, lgH, GRID_SIZE, BLOCK_DIM, 32, 16>;
-    
-
-    cudaMemcpy(h_histogram, d_histogram, sizeof(uint32_t) * hist_size, cudaMemcpyDeviceToHost);
-    transpose_kernel<SortParams>(
+    transpose_kernel<P>(
         d_histogram,
         d_histogram_transposed
     );
+
     cudaMemcpy(h_histogram_transposed, d_histogram_transposed, sizeof(uint32_t) * hist_size, cudaMemcpyDeviceToHost);
-    
-    verifyTranspose(h_histogram, tranposedHistogramCPU, h_histogram_transposed, NUM_BINS, BLOCK_DIM);
+
+    // verify
+    verifyTranspose(h_histogram, cpu_h_histogram_transposed, h_histogram_transposed, P::H, P::GRID_SIZE);
 }

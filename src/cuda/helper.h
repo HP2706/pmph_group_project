@@ -90,6 +90,33 @@ bool validate(T* A, T* B, uint64_t sizeAB){
 }
 
 
+// ... existing code ...
+
+template <typename T>
+void allocateAndInitialize(
+    T** h_ptr, 
+    T** d_ptr, 
+    uint32_t N, 
+    bool initRnd = false
+) {
+    // Allocate host memory
+    *h_ptr = (T*) malloc(sizeof(T) * N);
+    
+    // Initialize host memory
+    if (initRnd) {
+        randomInit<T>(*h_ptr, N, 1000); // Using 1000 as default upper bound
+    } else {
+        memset(*h_ptr, 0, sizeof(T) * N);
+    }
+
+    // Allocate device memory
+    cudaMalloc((void**)d_ptr, sizeof(T) * N);
+    
+    // Copy initialized host memory to device
+    cudaMemcpy(*d_ptr, *h_ptr, sizeof(T) * N, cudaMemcpyHostToDevice);
+}
+
+
 
 template <typename UInt, int BLOCK_SIZE>
 void PrepareMemory(
