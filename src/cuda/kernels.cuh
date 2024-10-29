@@ -43,6 +43,9 @@ void CountSort(
     uint32_t N,
     uint32_t bit_pos
 ) {
+    // check that P is an instance of Params
+    static_assert(is_params<P>::value, "P must be an instance of Params");
+
     Histo<P><<<P::GRID_SIZE, P::BLOCK_SIZE>>>(
         d_in,
         d_hist, 
@@ -66,7 +69,7 @@ void CountSort(
         d_tmp              // temporary storage
     );
 
-    /* // we do inclusive scan here
+    // we do inclusive scan here
     // transpose back to original histogram
     transpose_kernel<P>(
         d_hist_scanned,
@@ -82,7 +85,7 @@ void CountSort(
         N,
         d_in,
         d_out
-    ); */
+    );
 }
 
 template<class P>

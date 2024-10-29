@@ -21,7 +21,16 @@ uint32_t BLOCK_SZ;
 
 // this is a struct that holds the generic parameters for the radix sort
 
-template<class ElTp, class UintTp, int _Q, int _lgH, int _GRID_SIZE, int _BLOCK_SIZE, int _ELEMS_PER_THREAD_SCAN, int _T>
+template<
+    typename ElTp, 
+    typename UintTp, 
+    int _Q, 
+    int _lgH, 
+    int _GRID_SIZE, 
+    int _BLOCK_SIZE, 
+    int _ELEMS_PER_THREAD_SCAN, 
+    int _T
+>
 struct Params {
     static constexpr int Q = _Q; // number of elements per thread
     static constexpr int lgH = _lgH; // number of bits per iteration
@@ -90,7 +99,7 @@ bool validate(T* A, T* B, uint64_t sizeAB){
 }
 
 
-// ... existing code ...
+
 
 template <typename T>
 void allocateAndInitialize(
@@ -99,21 +108,33 @@ void allocateAndInitialize(
     uint32_t N, 
     bool initRnd = false
 ) {
-    // Allocate host memory
-    *h_ptr = (T*) malloc(sizeof(T) * N);
-    
-    // Initialize host memory
-    if (initRnd) {
-        randomInit<T>(*h_ptr, N, 1000); // Using 1000 as default upper bound
-    } else {
-        memset(*h_ptr, 0, sizeof(T) * N);
+    // Allocate and initialize host memory if h_ptr is provided
+    if (h_ptr) {
+        *h_ptr = (T*) malloc(sizeof(T) * N);
+        
+        // Initialize host memory
+        if (initRnd) {
+            randomInit<T>(*h_ptr, N, 1000); // Using 1000 as default upper bound
+        } else {
+            memset(*h_ptr, 0, sizeof(T) * N);
+        }
     }
 
-    // Allocate device memory
-    cudaMalloc((void**)d_ptr, sizeof(T) * N);
-    
-    // Copy initialized host memory to device
-    cudaMemcpy(*d_ptr, *h_ptr, sizeof(T) * N, cudaMemcpyHostToDevice);
+    // Allocate device memory if d_ptr is provided
+    if (d_ptr) {
+        cudaMalloc((void**)d_ptr, sizeof(T) * N);
+        
+        // If we have both pointers, copy host to device
+        if (h_ptr) {
+            cudaMemcpy(*d_ptr, *h_ptr, sizeof(T) * N, cudaMemcpyHostToDevice);
+        } else {
+            if (initRnd) {
+                randomInit<T>(*d_ptr, N, 1000); // Using 1000 as default upper bound
+            } else {
+                memset(*d_ptr, 0, sizeof(T) * N);
+            }
+        }
+    }
 }
 
 

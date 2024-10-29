@@ -1,11 +1,6 @@
 #ifndef UTILS_CUH
 #define UTILS_CUH
 
-#define LLC_FRAC (3.0 / 7.0)
-#define WARP 32
-#define lgWARP 5
-#define ELEMS_PER_THREAD 6 // this is for pbb_kernels.cuh
-
 #include <cstdint>
 #include <math.h>
 #include <stdio.h>

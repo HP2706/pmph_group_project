@@ -182,7 +182,7 @@ scanIncWarp(
     volatile typename OP::RedElTp* ptr, 
     const unsigned int idx 
 ) {
-    const unsigned int lane = idx & (WARP-1);
+    const unsigned int lane = idx & (WARP_COUNT-1);
     
     #pragma unroll
     for (int d = 0; d < 5; d++) {
@@ -211,9 +211,9 @@ scanIncWarp(
 template<class OP>
 __device__ inline typename OP::RedElTp
 scanIncBlock(volatile typename OP::RedElTp* ptr, const unsigned int idx) {
-    const unsigned int lane    = idx & (WARP - 1);
+    const unsigned int lane    = idx & (WARP_COUNT - 1);
     const unsigned int warpid  = idx >> lgWARP;
-    const unsigned int n_warps = (blockDim.x + WARP - 1) >> lgWARP; // Total number of warps
+    const unsigned int n_warps = (blockDim.x + WARP_COUNT - 1) >> lgWARP; // Total number of warps
 
     // 1. Perform scan at warp level.
     typename OP::RedElTp res = scanIncWarp<OP>(ptr, idx);
@@ -224,7 +224,7 @@ scanIncBlock(volatile typename OP::RedElTp* ptr, const unsigned int idx) {
     // synchronize the threads so that every thread has stored 
     // the value in the memory location before we write
     __syncthreads();
-    if (lane == (WARP - 1)) {
+    if (lane == (WARP_COUNT - 1)) {
         ptr[warpid] = end;
     }
 
@@ -743,7 +743,7 @@ template<class OP, class F>
 __device__ inline ValFlg<typename OP::RedElTp>
 sgmScanIncWarp(volatile typename OP::RedElTp* ptr, volatile F* flg, const unsigned int idx) {
     typedef ValFlg<typename OP::RedElTp> FVTup;
-    const unsigned int lane = idx & (WARP-1);
+    const unsigned int lane = idx & (WARP_COUNT-1);
 
     #pragma unroll
     for(uint32_t i=0; i<lgWARP; i++) {
@@ -774,7 +774,7 @@ template<class OP, class F>
 __device__ inline ValFlg<typename OP::RedElTp>
 sgmScanIncBlock(volatile typename OP::RedElTp* ptr, volatile F* flg, const unsigned int idx) {
     typedef ValFlg<typename OP::RedElTp> FVTup;
-    const unsigned int lane   = idx & (WARP-1);
+    const unsigned int lane   = idx & (WARP_COUNT-1);
     const unsigned int warpid = idx >> lgWARP;
 
     // 1. perform scan at warp level
@@ -782,7 +782,7 @@ sgmScanIncBlock(volatile typename OP::RedElTp* ptr, volatile F* flg, const unsig
     __syncthreads();
 
     // 2. if last thread in a warp, record it at the beginning of sh_data
-    if ( lane == (WARP-1) ) { flg[warpid] = res.f; ptr[warpid] = res.v; }
+    if ( lane == (WARP_COUNT-1) ) { flg[warpid] = res.f; ptr[warpid] = res.v; }
     __syncthreads();
 
     // 3. first warp scans the per warp results (again)

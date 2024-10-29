@@ -13,12 +13,14 @@
 
 // Block-sorting CUDA kernel
 
+
+
 // we use ElTp to make it generic over data types 
-template <class ElTp, int BLOCK_THREADS, int ITEMS_PER_THREAD>
+template <typename ElTp, int BLOCK_THREADS, int ITEMS_PER_THREAD>
 __global__ void CUBSortKernel(
     ElTp* d_in, 
-    ElTp* d_out,
-    int size // the length of the array
+    ElTp* d_out,    
+    int size 
 )
 {
     using namespace cub;
@@ -49,4 +51,3 @@ __global__ void CUBSortKernel(
     // Store the sorted segment
     BlockStore(temp_storage.store).Store(d_out + block_offset, thread_keys);
 }
-

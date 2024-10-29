@@ -10,7 +10,7 @@ using namespace std;
 #define Q            22
 
 template<typename T, int GRID_SIZE, int BLOCK_SIZE, int ITEMS_PER_THREAD>
-__host__ void runCub(
+void runCub(
     T* d_in, 
     T* d_out, 
     int size
@@ -150,7 +150,7 @@ void runAll ( int SIZE ) {
     srand(2006);
 
     const int BLOCK_SIZE = 256;
-    const int GRID_SIZE = (SIZE + (BLOCK_SIZE * Q - 1)) / (BLOCK_SIZE * Q);
+    const int GRID_SIZE = (SIZE + (BLOCK_SIZE * NELMS - 1)) / (BLOCK_SIZE * NELMS);
  
     // 1. allocate host memory for the two arrays
     unsigned long long mem_size = sizeof(T) * SIZE;
@@ -189,7 +189,7 @@ void runAll ( int SIZE ) {
     cudaFree(d_out);
 
     // the last generic parameter means something different here
-    runOurImpl<T, GRID_SIZE, BLOCK_SIZE, 32>( 
+    runOurImpl<T, GRID_SIZE, BLOCK_SIZE, NELMS>( 
         d_in, 
         d_out_2, 
         SIZE
@@ -215,26 +215,28 @@ int main (int argc, char * argv[]) {
 
     printf("Running GPU-Parallel Versions (Cuda) of MMM\n");
 
-    runAll<uint8_t, 256, 22> ( SIZE );
-
-
-
-    /* const uint32_t BLOCK_SIZE = 256;
-    const int GRID_SIZE = (SIZE + (BLOCK_SIZE * Q - 1)) / (BLOCK_SIZE * Q);
+    // Define constants for template parameters
+    const int BLOCK_SIZE = 256;
+    const int ITEMS_PER_THREAD = 22;
+    const int GRID_SIZE = (SIZE + (BLOCK_SIZE * ITEMS_PER_THREAD - 1)) / (BLOCK_SIZE * ITEMS_PER_THREAD);
  
-    uint32_t mem_size = sizeof(uint8_t) * SIZE;
-    uint8_t* d_in;
-    uint8_t* d_out_2;
+    // Allocate device memory
+    uint32_t mem_size = sizeof(uint32_t) * SIZE;
+    uint32_t* d_in;
+    uint32_t* d_out;
     cudaMalloc((void**)&d_in, mem_size);
-    cudaMalloc((void**)&d_out_2, mem_size);
-    // the last generic parameter means something different here
+    cudaMalloc((void**)&d_out, mem_size);
 
+    // Initialize memory if needed
+    cudaMemset(d_in, 0, mem_size);
+    cudaMemset(d_out, 0, mem_size);
 
-    runOurImpl<uint8_t, GRID_SIZE, BLOCK_SIZE, 32>( 
-        d_in, 
-        d_out_2, 
-        SIZE
-    ); */
+    // Run CUB implementation
+    runCub<uint32_t, 128, 256, 22>(d_in, d_out, SIZE);  // Using fixed grid size of 128
+
+    // Clean up
+    cudaFree(d_in);
+    cudaFree(d_out);
 }
 
 

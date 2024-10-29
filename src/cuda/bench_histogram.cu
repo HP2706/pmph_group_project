@@ -4,9 +4,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cuda_runtime.h>
+#include "constants.cuh"
 // Define the LLC size (Last Level Cache)
-#define LLC 41943040 // number taken from assignment 3-4
-#define Q 22
 // Define the size of your input
 
 

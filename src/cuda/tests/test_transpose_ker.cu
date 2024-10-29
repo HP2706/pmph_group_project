@@ -13,7 +13,8 @@
 
 
 
-void transposeCPU(uint32_t* input, uint32_t* output, int numRows, int numCols) 
+template<typename T>
+void transposeCPU(T* input, T* output, int numRows, int numCols) 
 {
     for (int i = 0; i < numRows; ++i) 
     {
@@ -26,10 +27,10 @@ void transposeCPU(uint32_t* input, uint32_t* output, int numRows, int numCols)
 }
 
 
-
-void verifyTranspose(uint32_t* cpuInput, uint32_t* cpuOutput, uint32_t* gpuOutput, int numRows, int numCols)
+template<typename T>
+void verifyTranspose(T* cpuInput, T* cpuOutput, T* gpuOutput, int numRows, int numCols)
 {
-    transposeCPU(cpuInput, cpuOutput, numRows, numCols);
+    transposeCPU<T>(cpuInput, cpuOutput, numRows, numCols);
     bool success = true;
     uint32_t mismatchCount = 0;
     for (int i = 0; i < numRows * numCols; ++i) 
@@ -101,7 +102,7 @@ void test_verify_transpose(
     );
 
     // initialize cpu histogram transposed to 0
-    cpu_h_histogram_transposed = (uint32_t*) malloc(sizeof(uint32_t) * hist_size);
+    cpu_h_histogram_transposed = (typename P::UintType*) malloc(sizeof(typename P::UintType) * hist_size);
     for (int i = 0; i < hist_size; i++) {
         cpu_h_histogram_transposed[i] = 0;
     }
@@ -113,8 +114,8 @@ void test_verify_transpose(
         P::GRID_SIZE
     );
 
-    cudaMemcpy(h_histogram_transposed, d_histogram_transposed, sizeof(uint32_t) * hist_size, cudaMemcpyDeviceToHost);
-    verifyTranspose(h_histogram, cpu_h_histogram_transposed, h_histogram_transposed, P::H, P::GRID_SIZE);
+    cudaMemcpy(h_histogram_transposed, d_histogram_transposed, sizeof(typename P::UintType) * hist_size, cudaMemcpyDeviceToHost);
+    verifyTranspose<typename P::UintType>(h_histogram, cpu_h_histogram_transposed, h_histogram_transposed, P::H, P::GRID_SIZE);
 
 
     transpose_kernel<P>(
@@ -124,7 +125,7 @@ void test_verify_transpose(
         P::H
     );
 
-    cudaMemcpy(h_histogram_transposed_2, d_histogram_transposed_2, sizeof(uint32_t) * hist_size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_histogram_transposed_2, d_histogram_transposed_2, sizeof(typename P::UintType) * hist_size, cudaMemcpyDeviceToHost);
 
     // check if the double transposed histogram is the same as the original histogram
     validate<typename P::UintType>(h_histogram_transposed_2, h_histogram, hist_size);
