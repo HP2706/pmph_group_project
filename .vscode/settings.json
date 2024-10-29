@@ -21,6 +21,8 @@
         "cmath": "cpp",
         "cstdint": "cpp",
         "functional": "cpp",
-        "cstdlib": "cpp"
+        "cstdlib": "cpp",
+        "limits": "cpp",
+        "system_error": "cpp"
     }
 }

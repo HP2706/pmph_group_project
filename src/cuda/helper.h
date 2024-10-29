@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
+#include <cstdint>
 #include <time.h>
 
 #if 0
@@ -20,7 +21,7 @@ uint32_t BLOCK_SZ;
 
 // this is a struct that holds the generic parameters for the radix sort
 
-template<class ElTp, class UintTp, int _Q, int _lgH, int _GRID_SIZE, int _BLOCK_SIZE, int _T>
+template<class ElTp, class UintTp, int _Q, int _lgH, int _GRID_SIZE, int _BLOCK_SIZE, int _ELEMS_PER_THREAD_SCAN, int _T>
 struct Params {
     static constexpr int Q = _Q; // number of elements per thread
     static constexpr int lgH = _lgH; // number of bits per iteration
@@ -29,8 +30,10 @@ struct Params {
     static constexpr int T = _T; // Tile size
     static constexpr int H = 1 << _lgH; // number of bins, this is simply 2^lgH 
     static constexpr int QB = _Q * _BLOCK_SIZE; // number of elements per block
+    static constexpr int HB = H * _BLOCK_SIZE; // size of the histogram array
     using ElementType = ElTp; // the type of the input array
     using UintType = UintTp; // the type of the histogram
+    static constexpr int ELEMS_PER_THREAD_SCAN = _ELEMS_PER_THREAD_SCAN; // number of elements per thread
 
     static_assert(lgH <= 8, "LGH must be less than or equal to 8 as otherwise shared memory will overflow");
 
@@ -41,34 +44,8 @@ struct Params {
 template<typename T>
 struct is_params : std::false_type {};
 
-template<class ElTp, class UintTp, int _Q, int _lgH, int _GRID_SIZE, int _BLOCK_SIZE, int _T>
-struct is_params<Params<ElTp, UintTp, _Q, _lgH, _GRID_SIZE, _BLOCK_SIZE, _T>> : std::true_type {};
-
-
-
-void getDeviceInfo() {
-{
-        int nDevices;
-        cudaGetDeviceCount(&nDevices);
-
-        cudaDeviceProp prop;
-
-        cudaGetDeviceProperties(&prop, 0);
-        HWD = prop.maxThreadsPerMultiProcessor * prop.multiProcessorCount;
-        const uint32_t BLOCK_SZ = prop.maxThreadsPerBlock;
-        const uint32_t SH_MEM_SZ = prop.sharedMemPerBlock;
-        
-        {
-            printf("Device name: %s\n", prop.name);
-            printf("Number of hardware threads: %d\n", HWD);
-            printf("Block size: %d\n", BLOCK_SZ);
-            printf("Shared memory size: %d\n", SH_MEM_SZ);
-            puts("====");
-        }
-    }
-}
-
-
+template<class ElTp, class UintTp, int _Q, int _lgH, int _GRID_SIZE, int _BLOCK_SIZE, int _T, int _ELEMS_PER_THREAD_SCAN>
+struct is_params<Params<ElTp, UintTp, _Q, _lgH, _GRID_SIZE, _BLOCK_SIZE, _T, _ELEMS_PER_THREAD_SCAN>> : std::true_type {};
 
 
 int gpuAssert(cudaError_t code) {

@@ -4,6 +4,7 @@
 #define LLC_FRAC (3.0 / 7.0)
 #define WARP 32
 #define lgWARP 5
+#define ELEMS_PER_THREAD 6 // this is for pbb_kernels.cuh
 
 #include <cstdint>
 #include <math.h>
@@ -11,6 +12,8 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <time.h>
+#include "../constants.cuh"
+/// helper kernels from assignment 2 and 3-4
 
 // blockDim.y = T; blockDim.x = T
 // each block transposes a square T
@@ -38,61 +41,59 @@ coalsTransposeKer(ElTp* A, ElTp* B, int heightA, int widthA) {
 }
 
 
-
-
-template<class T, uint32_t CHUNK>
-__device__ inline void
-copyFromGlb2ShrMem( const uint32_t glb_offs
-                  , const uint32_t N
-                  , const T& ne
-                  , T* d_inp
-                  , volatile T* shmem_inp
-) {
-    #pragma unroll
-    for(uint32_t i=0; i<CHUNK; i++) {
-
-        //uint32_t loc_ind = threadIdx.x*CHUNK + i;
-        uint32_t loc_ind = i * blockDim.x + threadIdx.x;
-        uint32_t glb_ind = glb_offs + loc_ind;
-        T elm = ne;
-        if(glb_ind < N) { elm = d_inp[glb_ind]; }
-        shmem_inp[loc_ind] = elm;
-    }
-    __syncthreads(); // leave this here at the end!
+uint32_t nextMul32(uint32_t x) {
+    return ((x + 31) / 32) * 32;
 }
-
 
 /**
- * This is very similar with `copyFromGlb2ShrMem` except
- * that you need to copy from shared to global memory, so
- * that consecutive threads write consecutive indices in
- * global memory in the same SIMD instruction.
- * `glb_offs` is the offset in global-memory array `d_out`
- *    where elements should be written.
- * `d_out` is the global-memory array
- * `N` is the length of `d_out`
- * `shmem_red` is the shared-memory of size
- *    `blockDim.x*CHUNK*sizeof(T)`
+ * `N` is the input-array length
+ * `B` is the CUDA block size
+ * This function attempts to virtualize the computation so
+ *   that it spawns at most 1024 CUDA blocks; otherwise an
+ *   error is thrown. It should not throw an error for any
+ *   B >= 64.
+ * The return is the number of blocks, and `CHUNK * (*num_chunks)`
+ *   is the number of elements to be processed sequentially by
+ *   each thread so that the number of blocks is <= 1024.
  */
-template<class T, uint32_t CHUNK>
-__device__ inline void
-copyFromShr2GlbMem( const uint32_t glb_offs
-                  , const uint32_t N
-                  , T* d_out
-                  , volatile T* shmem_red
-) {
-    #pragma unroll
-    for (uint32_t i = 0; i < CHUNK; i++) {
-        //uint32_t loc_ind = threadIdx.x * CHUNK + i;
-        uint32_t loc_ind = i * blockDim.x + threadIdx.x;
-        uint32_t glb_ind = glb_offs + loc_ind;
-        if (glb_ind < N) {
-            T elm = const_cast<const T&>(shmem_red[loc_ind]);
-            d_out[glb_ind] = elm;
-        }
-    }
-    __syncthreads(); // leave this here at the end!
+template<int CHUNK>
+uint32_t getNumBlocks(const uint32_t N, const uint32_t B, uint32_t* num_chunks) {
+    const uint32_t max_inp_thds = (N + CHUNK - 1) / CHUNK;
+    const uint32_t num_thds0    = min(max_inp_thds, MAX_HWDTH);
+
+    const uint32_t min_elms_all_thds = num_thds0 * CHUNK;
+    *num_chunks = max(1, (N + min_elms_all_thds - 1) / min_elms_all_thds);
+
+    const uint32_t seq_chunk = (*num_chunks) * CHUNK;
+    const uint32_t num_thds = (N + seq_chunk - 1) / seq_chunk;
+    const uint32_t num_blocks = (num_thds + B - 1) / B;
+
+    if(num_blocks <= MAX_BLOCK) {
+        return num_blocks;
+    } else {
+        //printf("Warning: reduce/scan configuration does not allow the maximal concurrency supported by hardware.\n");
+        const uint32_t num_blocks = 1024;
+        const uint32_t num_thds   = num_blocks * B;
+        const uint32_t num_conc_elems = num_thds * CHUNK;
+        *num_chunks = (N + num_conc_elems - 1) / num_conc_elems;
+        return num_blocks;
+    }    
 }
 
+
+#define CUDASSERT(code) { __cudassert((code), __FILE__, __LINE__); }
+#define CUDACHECK(code) { __cudassert((code), __FILE__, __LINE__, false); }
+
+void __cudassert(cudaError_t code,
+                 const char *file,
+                 int line,
+                 bool do_abort_on_err = true) {
+  if (code != cudaSuccess) {
+    fprintf(stderr, "GPU Error in %s (line %d): %s\n",
+            file, line, cudaGetErrorString(code));
+    if (do_abort_on_err)
+        exit(1);
+  }
+}
 
 #endif

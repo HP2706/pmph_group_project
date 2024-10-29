@@ -2,8 +2,8 @@
 #define RANK_PERMUTE_CUH
 
 #include "utils.cuh"
+#include "../constants.cuh"
 #include "../helper.h"
-
 /// we use UintType as we are manipulating 
 /// the histograms not the input array elements
 template<class P>
@@ -147,8 +147,6 @@ __global__ void RankPermuteKer(
             arr_out[pos_out] = elm;
         }
     }
-
-
 }
 
 #endif // RANK_PERMUTE_CUH

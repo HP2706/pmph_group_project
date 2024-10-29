@@ -6,6 +6,7 @@
 #include <cuda_runtime.h>
 #include <cstdint>
 #include <type_traits>
+#include "../constants.cuh"
 #include "../helper.h"
 
 // we dont expect to process more than 8 bits for the radix sort
