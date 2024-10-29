@@ -14,9 +14,37 @@ typedef long long  int64_t;
 
 typedef unsigned int uint32_t;
 
-
 uint32_t HWD;
 uint32_t BLOCK_SZ;
+
+
+// this is a struct that holds the generic parameters for the radix sort
+
+template<class ElTp, class UintTp, int _Q, int _lgH, int _GRID_SIZE, int _BLOCK_SIZE, int _T>
+struct Params {
+    static constexpr int Q = _Q; // number of elements per thread
+    static constexpr int lgH = _lgH; // number of bits per iteration
+    static constexpr int GRID_SIZE = _GRID_SIZE; // number of blocks per grid
+    static constexpr int BLOCK_SIZE = _BLOCK_SIZE; // number of threads per block
+    static constexpr int T = _T; // Tile size
+    static constexpr int H = 1 << _lgH; // number of bins, this is simply 2^lgH 
+    static constexpr int QB = _Q * _BLOCK_SIZE; // number of elements per block
+    using ElementType = ElTp; // the type of the input array
+    using UintType = UintTp; // the type of the histogram
+
+    static_assert(lgH <= 8, "LGH must be less than or equal to 8 as otherwise shared memory will overflow");
+
+};
+
+
+// Type trait to check if T is an instance of Params
+template<typename T>
+struct is_params : std::false_type {};
+
+template<class ElTp, class UintTp, int _Q, int _lgH, int _GRID_SIZE, int _BLOCK_SIZE, int _T>
+struct is_params<Params<ElTp, UintTp, _Q, _lgH, _GRID_SIZE, _BLOCK_SIZE, _T>> : std::true_type {};
+
+
 
 void getDeviceInfo() {
 {

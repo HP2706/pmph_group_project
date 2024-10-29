@@ -5,14 +5,15 @@ CXX        = nvcc -O3
 SRC_GPU = main-gpu.cu
 HELPERS = helper*.h helper_kernels/*.cuh  
 KERNELS = cub_kernel.cuh
-EXEC_GPU= mmm-gpu
+EXEC_GPU= gpu
 
 # New variables for experiment
 EXPERIMENT_SRC = experiment.cu
-EXPERIMENT_EXEC = exp
+EXPERIMENT_EXEC = experiment_binary
 
 BENCH_HISTOGRAM_SRC = bench_histogram.cu
-BENCH_HISTOGRAM_EXEC = bench_histogram
+BENCH_HISTOGRAM_EXEC = bench_histogram_binary
+
 
 default: compile_gpu run_gpu
 

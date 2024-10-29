@@ -24,9 +24,9 @@ __global__ void CUBSortKernel(
     using namespace cub;
 
     // Specialize BlockRadixSort, BlockLoad, and BlockStore for the given parameters
-    typedef BlockRadixSort<ElTp, BLOCK_THREADS, ITEMS_PER_THREAD>                     BlockRadixSort;
-    typedef BlockLoad<ElTp, BLOCK_THREADS, ITEMS_PER_THREAD, BLOCK_LOAD_TRANSPOSE>    BlockLoad;
-    typedef BlockStore<ElTp, BLOCK_THREADS, ITEMS_PER_THREAD, BLOCK_STORE_TRANSPOSE>  BlockStore;
+    typedef cub::BlockRadixSort<ElTp, BLOCK_THREADS, ITEMS_PER_THREAD>                     BlockRadixSort;
+    typedef cub::BlockLoad<ElTp, BLOCK_THREADS, ITEMS_PER_THREAD, cub::BLOCK_LOAD_TRANSPOSE>    BlockLoad;
+    typedef cub::BlockStore<ElTp, BLOCK_THREADS, ITEMS_PER_THREAD, cub::BLOCK_STORE_TRANSPOSE>  BlockStore;
 
     // Allocate shared memory
     __shared__ union {

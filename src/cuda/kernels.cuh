@@ -4,35 +4,26 @@
 #include "helper_kernels/prefix_sum.cuh"
 #include "helper_kernels/utils.cuh"
 #include "helper_kernels/rank_permute.cuh"
-
-#define lgH 8 // bits used for each counting sort step
-#define Q 22 // elms processed per thread
-#define BINS (1 << lgH) // number of bins in the histogram
+#include "helper.h"
 
 
-template <class ElTp> 
-__global__ void RadixSortKer(ElTp* d_in, ElTp* d_out, int size) {
-    
-
-}
-
-
-
-template<int T>
+template<class P>
 void transpose_kernel(
-    uint32_t* input,          // renamed from d_hist
-    uint32_t* output,         // renamed from d_hist_transposed
-    const uint32_t height,    // renamed from bins
-    const uint32_t width      // renamed from GRID_SIZE
+    typename P::UintType* input,          // renamed from d_hist
+    typename P::UintType* output         // renamed from d_hist_transposed
 ) {
+    static_assert(is_params<P>::value, "P must be an instance of Params");
+    const uint32_t T = P::T;
 
+    const uint32_t height = P::H;
+    const uint32_t width = P::GRID_SIZE;
     // 1. setup block and grid parameters
     int  dimy = (height+T-1) / T; 
     int  dimx = (width +T-1) / T;
     dim3 block(T, T, 1);
     dim3 grid (dimx, dimy, 1);
 
-    coalsTransposeKer<uint32_t, T> <<<grid, block>>>(
+    coalsTransposeKer<typename P::UintType, T> <<<grid, block>>>(
         input,
         output,
         height,    // This should be NUM_BINS for your case
@@ -40,75 +31,97 @@ void transpose_kernel(
     );
 }
 
-/// the code for the counting sort subroutine
-/// modify to __device__ later when incorporated in the radix sort kernel
-template <class ElTp, int GRID_SIZE, int BLOCK_SIZE, int T>
+
+template<class P>
 void CountSort(
-    const ElTp* d_in, 
-    ElTp* d_out, 
-    uint32_t* d_hist,
-    uint32_t* d_hist_transposed,
-    uint32_t* d_hist_scanned,
+    typename P::ElementType* d_in, 
+    typename P::ElementType* d_out, 
+    typename P::UintType* d_hist,
+    typename P::UintType* d_hist_transposed,
+    typename P::UintType* d_hist_scanned,
     uint32_t N,
     uint32_t bit_pos
 ) {
-    // Step 1: Compute histogram
-    // Each block processes N/GRID_SIZE elements and produces local histogram
-    // Result: d_hist is [GRID_SIZE][BINS] in row-major order
-    Histo1<ElTp, lgH, Q><<<GRID_SIZE, BLOCK_SIZE>>>(
+    Histo<P><<<P::GRID_SIZE, P::BLOCK_SIZE>>>(
         d_in,
         d_hist, 
         N, 
         bit_pos
     );
 
-    // Step 2: Transpose histogram matrix for coalesced memory access
-    // Input: d_hist [GRID_SIZE][BINS]
-    // Output: d_hist_transposed [BINS][GRID_SIZE]
-    
-    // 1. setup block and grid parameters
-    int  dimy = (BINS+T-1) / T; 
-    int  dimx = (GRID_SIZE +T-1) / T;
-    dim3 block(T, T, 1);
-    dim3 grid (dimx, dimy, 1);
-
-
-    transpose_kernel<16>(
+    transpose_kernel<P>(
         d_hist,
-        d_hist_transposed,
-        BINS,
-        GRID_SIZE
+        d_hist_transposed
     );
 
-    const int total_elements = BINS * GRID_SIZE;
+    const int total_elements = P::H * P::GRID_SIZE;
     uint32_t* d_tmp;
-    cudaMalloc((void**) &d_tmp, sizeof(uint32_t) * BLOCK_SIZE);
+    cudaMalloc((void**) &d_tmp, sizeof(uint32_t) * P::BLOCK_SIZE);
     
-    ScanExc<Add<uint32_t>, Q> <<<GRID_SIZE, BLOCK_SIZE>>>(
+    // we do inclusive scan here
+    scan3rdKernel<Add<uint32_t>, P::Q> <<<P::GRID_SIZE, P::BLOCK_SIZE>>>(
         d_hist_scanned,     // output: scanned histogram
-        d_hist_transposed,  // input
+        d_hist,  // input
         d_tmp,              // temporary storage
-        total_elements,
-        GRID_SIZE          // number of segments (one per bin)
+        total_elements, // hist size
+        P::GRID_SIZE          // number of segments (one per bin)
     );
     cudaFree(d_tmp);
 
-    RankPermuteKer<ElTp, Q, lgH><<<GRID_SIZE, BLOCK_SIZE>>>(
+    // transpose back to original histogram
+    transpose_kernel<P>(
         d_hist_scanned,
-        d_out,
-        N
-    ); 
+        d_hist_transposed // we write back to the transposed histogram
+    );
 
+    RankPermuteKer<P> <<<P::GRID_SIZE, P::BLOCK_SIZE>>> 
+    (
+        d_hist_transposed,
+        bit_pos,
+        N,
+        d_in,
+        d_out
+    );
 }
 
+template<class P>
+void RadixSortKer(
+    typename P::ElementType* d_in, 
+    typename P::ElementType* d_out, 
+    int size
+) {
+    uint32_t* d_hist;
+    uint32_t* d_hist_transposed;
+    uint32_t* d_hist_scanned;
+    cudaMalloc((void**) &d_hist, sizeof(uint32_t) * P::BINS * P::BLOCK_SIZE);
+    cudaMalloc((void**) &d_hist_transposed, sizeof(uint32_t) * P::BINS * P::BLOCK_SIZE);
+    cudaMalloc((void**) &d_hist_scanned, sizeof(uint32_t) * P::BINS * P::BLOCK_SIZE);
 
- /* // Step 3: Perform exclusive scan on transposed histogram
-    // Each row contains counts for one bin across all blocks
+    int bit_pos = 0;
+    while (bit_pos < P::lgH) {
+        CountSort<P>(
+            d_in, 
+            d_out, 
+            d_hist, 
+            d_hist_transposed, 
+            d_hist_scanned, 
+            size, 
+            bit_pos
+        );
 
+        // increment the bit position
+        bit_pos += P::lgH;
 
-    // Step 4: Use scanned histogram to permute elements to final positions
-    */
+        // swap the input and output arrays
+        typename P::ElementType* tmp = d_in;
+        d_in = d_out;
+        d_out = tmp;
 
-
+        // zero out the histogram arrays
+        cudaMemset(d_hist, 0, sizeof(uint32_t) * P::BINS * P::GRID_SIZE);
+        cudaMemset(d_hist_transposed, 0, sizeof(uint32_t) * P::BINS * P::GRID_SIZE);
+        cudaMemset(d_hist_scanned, 0, sizeof(uint32_t) * P::BINS * P::GRID_SIZE);
+    }
+}
 
 #endif

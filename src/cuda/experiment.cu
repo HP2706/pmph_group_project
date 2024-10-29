@@ -2,8 +2,7 @@
 #include <cuda_runtime.h>
 #include <iostream>
 #include "helper.h"
-
-#define Q 22
+#include "helper_kernels/rank_permute.cuh"
 
 
 
@@ -24,6 +23,8 @@ int main() {
     const uint32_t SIZE = 1000000;
     const uint32_t NUM_BINS = 1 << 8;
     const uint32_t BLOCK_SIZE = 1024;
+    const uint32_t Q = 22;
+    const uint32_t lgH = 8;
     
     // Calculate grid size based on input size and elements per thread
     const uint32_t grid_size = (SIZE + (BLOCK_SIZE * Q - 1)) / (BLOCK_SIZE * Q);
@@ -75,15 +76,19 @@ int main() {
     printf("height: %d, width: %d\n", height, width);
     // Update the kernel call with correct dimensions
 
-    CountSort<uint32_t, grid_size, BLOCK_SIZE, 16>(
+    using SortParams = Params<uint32_t, uint32_t, Q, lgH, grid_size, BLOCK_SIZE, 32>;
+    CountSort<SortParams>(
         d_in,
         d_out,
         d_histogram,
         d_histogram_transposed,
         d_hist_out,
         SIZE,
-        0
+        uint32_t(0)
     );
+
+
+    
 
     // Add after kernel call
     cudaError_t err = cudaGetLastError();
@@ -107,25 +112,6 @@ int main() {
 
     
     printf("\n");
-
-   
-
-    /* printf("h_hist_out post exclusive scan: ");
-    for (int i = 0; i < hist_size; i++) {
-        printf("%d ", h_hist_out[i]);
-    }
-    printf("\n"); */
-
-    /* cudaMemcpy(h_out, d_out, sizeof(uint32_t) * SIZE, cudaMemcpyDeviceToHost);  
-
-    for (int i = 0; i < SIZE; i++) {
-        std::cout << h_out[i] << " ";
-    }
-    std::cout << std::endl; */
-
-
-
-    
 
 
     return 0;

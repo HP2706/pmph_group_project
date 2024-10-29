@@ -20,6 +20,7 @@
         "type_traits": "cpp",
         "cmath": "cpp",
         "cstdint": "cpp",
-        "functional": "cpp"
+        "functional": "cpp",
+        "cstdlib": "cpp"
     }
 }
