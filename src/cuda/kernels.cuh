@@ -10,13 +10,13 @@
 template<class P>
 void transpose_kernel(
     typename P::UintType* input,          // renamed from d_hist
-    typename P::UintType* output         // renamed from d_hist_transposed
+    typename P::UintType* output,         // renamed from d_hist_transposed
+    const uint32_t height,
+    const uint32_t width
 ) {
     static_assert(is_params<P>::value, "P must be an instance of Params");
     const uint32_t T = P::T;
 
-    const uint32_t height = P::H;
-    const uint32_t width = P::GRID_SIZE;
     // 1. setup block and grid parameters
     int  dimy = (height+T-1) / T; 
     int  dimx = (width +T-1) / T;
@@ -52,13 +52,15 @@ void CountSort(
 
     transpose_kernel<P>(
         d_hist,
-        d_hist_transposed
+        d_hist_transposed,
+        P::H,
+        P::GRID_SIZE
     );
 
 
     scanInc<Add<typename P::UintType>>(
-        P::HB, // hist array size
-        P::GRID_SIZE,          // number of segments (one per bin)
+        P::BLOCK_SIZE, // Block size
+        P::HB,          // Histogram size
         d_hist_scanned,     // output: scanned histogram
         d_hist_transposed,
         d_tmp              // temporary storage
@@ -68,7 +70,9 @@ void CountSort(
     // transpose back to original histogram
     transpose_kernel<P>(
         d_hist_scanned,
-        d_hist_transposed // we write back to the transposed histogram
+        d_hist_transposed, // we write back to the transposed histogram
+        P::GRID_SIZE,
+        P::H
     );
 
     RankPermuteKer<P> <<<P::GRID_SIZE, P::BLOCK_SIZE>>> 

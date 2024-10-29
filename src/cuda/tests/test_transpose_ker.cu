@@ -54,7 +54,6 @@ void verifyTranspose(uint32_t* cpuInput, uint32_t* cpuOutput, uint32_t* gpuOutpu
     }
 }
 
-
 //Should probably be moved to separate file...
 template<typename P>
 void test_verify_transpose(
@@ -74,6 +73,9 @@ void test_verify_transpose(
     typename P::UintType* h_histogram;
     typename P::UintType* d_histogram;
 
+    typename P::UintType* h_histogram_transposed_2;
+    typename P::UintType* d_histogram_transposed_2;
+
     typename P::UintType* cpu_h_histogram_transposed;
     
 
@@ -91,6 +93,12 @@ void test_verify_transpose(
         true // we do not initialize to 0
     );
 
+    allocateAndInitialize<typename P::UintType>(
+        &h_histogram_transposed_2, 
+        &d_histogram_transposed_2, 
+        hist_size,
+        false // we initialize to 0
+    );
 
     // initialize cpu histogram transposed to 0
     cpu_h_histogram_transposed = (uint32_t*) malloc(sizeof(uint32_t) * hist_size);
@@ -100,11 +108,30 @@ void test_verify_transpose(
 
     transpose_kernel<P>(
         d_histogram,
-        d_histogram_transposed
+        d_histogram_transposed,
+        P::H,
+        P::GRID_SIZE
     );
 
     cudaMemcpy(h_histogram_transposed, d_histogram_transposed, sizeof(uint32_t) * hist_size, cudaMemcpyDeviceToHost);
-
-    // verify
     verifyTranspose(h_histogram, cpu_h_histogram_transposed, h_histogram_transposed, P::H, P::GRID_SIZE);
+
+
+    transpose_kernel<P>(
+        d_histogram_transposed,
+        d_histogram_transposed_2,
+        P::GRID_SIZE,
+        P::H
+    );
+
+    cudaMemcpy(h_histogram_transposed_2, d_histogram_transposed_2, sizeof(uint32_t) * hist_size, cudaMemcpyDeviceToHost);
+
+    // check if the double transposed histogram is the same as the original histogram
+    validate<typename P::UintType>(h_histogram_transposed_2, h_histogram, hist_size);
+    
+    free(cpu_h_histogram_transposed);
+    free(h_histogram_transposed);
+    free(h_histogram_transposed_2);
+    cudaFree(d_histogram_transposed);
+    cudaFree(d_histogram_transposed_2);
 }
