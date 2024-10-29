@@ -8,7 +8,10 @@
 #include "helper_kernels/utils.cuh"
 #include "helper_kernels/pbb_kernels.cuh"
 #include "helper_kernels/prefix_sum.cuh"
+#include <cuda_runtime.h>
+#include <iostream>
 #include <cstdint>
+#include "kernels.cuh"
 
 
 void initArray(int32_t* inp_arr, const uint32_t N, const int R) {
@@ -128,8 +131,123 @@ int scanIncAddI32( const uint32_t B     // desired CUDA block size ( <= 1024, mu
     return 0;
 }
 
+void transposeCPU(uint32_t* input, uint32_t* output, int numRows, int numCols) 
+{
+    for (int i = 0; i < numRows; ++i) 
+    {
+        for (int j = 0; j < numCols; ++j) 
+        { 
+            uint32_t inputVal = input[i * numCols + j];
+            output[j * numRows + i] = inputVal; 
+        }
+    }
+}
+
+void verifyTranspose(uint32_t* cpuInput, uint32_t* cpuOutput, uint32_t* gpuOutput, int numRows, int numCols)
+{
+    transposeCPU(cpuInput, cpuOutput, numRows, numCols);
+    bool success = true;
+    uint32_t mismatchCount = 0;
+    for (int i = 0; i < numRows * numCols; ++i) 
+    {
+        if (cpuOutput[i] != gpuOutput[i]) 
+        {
+            success = false;
+            std::cout << "Mismatch at index " << i << ": CPU " << cpuOutput[i] 
+                      << " != GPU " << gpuOutput[i] << "\n";
+            ++mismatchCount;
+        }
+    }
+    
+    if (success) 
+    {
+        std::cout << "Transpose verification succeeded.\n";
+    } 
+    else 
+    {
+        std::cout << "Transpose verification failed.\n";
+        std::cout << "Mismatch count: " << mismatchCount << " of " << numRows * numCols << " elements.\n";
+    }
+}
+
+//Should probably be moved to separate file...
+void test_verify_transpose()
+{
+    uint32_t* h_in;
+    uint32_t* d_in;
+    uint32_t* d_out;
+    uint32_t* d_histogram;
+    uint32_t* h_histogram;
+    
+    uint32_t* d_histogram_transposed;
+    uint32_t* d_hist_out;
+    uint32_t* h_histogram_transposed;
+    uint32_t* tranposedHistogramCPU;
+    
+
+    const uint32_t SIZE = 1000000;
+    const uint32_t NUM_BINS = 1 << 8;
+    const uint32_t BLOCK_SIZE = 1024;
+    const uint32_t Q = 22;
+    const uint32_t lgH = 8;
+    
+    // Calculate grid size based on input size and elements per thread
+    const uint32_t grid_size = (SIZE + (BLOCK_SIZE * Q - 1)) / (BLOCK_SIZE * Q);
+    // Change the histogram size calculation
+    const uint32_t hist_size = NUM_BINS * grid_size; // This needs to be calculated before PrepareMemory
+
+
+    PrepareMemory<uint32_t, BLOCK_SIZE>(
+        &h_in, 
+        &d_in, 
+        &d_histogram, 
+        &h_histogram,
+        NUM_BINS,
+        SIZE,
+        hist_size
+    );
+    
+    uint32_t* h_hist_out = (uint32_t*) malloc(sizeof(uint32_t) * hist_size);
+    // initialize h_histogram_transposed to 0
+    h_histogram_transposed = (uint32_t*) malloc(sizeof(uint32_t) * hist_size);
+    tranposedHistogramCPU = (uint32_t*) malloc(sizeof(uint32_t) * hist_size);
+    for (int i = 0; i < hist_size; i++) {
+        h_histogram_transposed[i] = 0;
+        h_hist_out[i] = 0;
+    }
+    
+    cudaMalloc((uint32_t**) &d_hist_out, sizeof(uint32_t) * hist_size);
+    cudaMemcpy(d_hist_out, h_hist_out, sizeof(uint32_t) * hist_size, cudaMemcpyHostToDevice);
+    cudaMemset(d_hist_out, 0, sizeof(uint32_t) * hist_size);
+
+
+    cudaMalloc((uint32_t**) &d_histogram_transposed, sizeof(uint32_t) * hist_size);
+    cudaMemcpy(d_histogram_transposed, h_histogram_transposed, sizeof(uint32_t) * hist_size, cudaMemcpyHostToDevice);
+    cudaMemset(d_histogram_transposed, 0, sizeof(uint32_t) * hist_size);
+    
+    using SortParams = Params<uint32_t, uint32_t, Q, lgH, grid_size, BLOCK_SIZE, 32, 16>;
+    
+    Histo<SortParams><<<SortParams::GRID_SIZE, SortParams::BLOCK_SIZE>>>(
+        d_in,
+        d_histogram, 
+        SIZE,
+        uint32_t(0)
+    );
+
+    cudaMemcpy(h_histogram, d_histogram, sizeof(uint32_t) * hist_size, cudaMemcpyDeviceToHost);
+    transpose_kernel<SortParams>(
+        d_histogram,
+        d_histogram_transposed
+    );
+    cudaMemcpy(h_histogram_transposed, d_histogram_transposed, sizeof(uint32_t) * hist_size, cudaMemcpyDeviceToHost);
+    
+    verifyTranspose(h_histogram, tranposedHistogramCPU, h_histogram_transposed, NUM_BINS, BLOCK_SIZE);
+
+}
+
 int main() {
    
+    test_verify_transpose();
 
     initHwd();
 
