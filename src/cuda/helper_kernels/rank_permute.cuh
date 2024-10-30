@@ -30,18 +30,6 @@ __device__ void GlbToReg(
         shmem  // Updated variable name
     );
 
-   /* // copy from global to shared memory
-   for (int q = 0; q < Q; q++) {
-        uint32_t shmem_pos = q*BLOCK_SIZE + tid;
-        uint64_t glb_pos = glb_offs + shmem_pos;
-
-        T elm = H;
-        if (glb_pos < N) {
-            elm = arr[glb_pos];
-        }
-        shmem[shmem_pos] = elm;
-   }
-   */
     __syncthreads(); 
 
     // 2. Read from shared memory to registers
@@ -50,6 +38,13 @@ __device__ void GlbToReg(
     }
     __syncthreads();
 }
+
+
+template<class T>
+__device__ T isBitSet(T val, int bitpos, int bit, T compar = T(1)) {
+    return (val >> (bitpos + bit)) & compar;
+}
+
 
 // this is not a kernel but a compound function that calls many kernels
 template<class P>
@@ -93,9 +88,9 @@ __global__ void RankPermuteKer(
      * 1. Each thread sequentially reduces its Q elements in registers
      * 2. Perform parallel block-level scan across all threads
      * 3. Each thread applies prefix to rearrange its elements
-     */
+    */
 
-    uint16_t q_offs = tid * P::Q;
+    uint16_t thread_offset = tid * P::Q;
 
     #pragma unroll
     for (int bit = 0; bit < P::lgH; bit++) {
@@ -106,7 +101,7 @@ __global__ void RankPermuteKer(
         for (int q_idx = 0; q_idx < P::Q; q_idx++) {
             // we shift by bit to get the bit value and we mask it with 1 to get the boolean value
             // we first shift by the bitpos offset and then by the current bit from 0 to lgH-1
-            uint16_t res = ((reg[q_idx] >> (bitpos + bit)) & uint(1));
+            uint16_t res = isBitSet<uint>(reg[q_idx], bitpos, bit);
             accum += res;
         }
         
@@ -118,7 +113,6 @@ __global__ void RankPermuteKer(
         // we scan the local histogram
         uint16_t res = scanIncBlock<Add<uint16_t>>(local_histo, tid);
         __syncthreads();
-
         local_histo[tid] = res;
         __syncthreads();
 
@@ -139,17 +133,17 @@ __global__ void RankPermuteKer(
         // we rearrange the elements based on the bit value
         for (int q_idx = 0; q_idx < P::Q; q_idx++) {
             uint val = reg[q_idx];
-            uint bit_val = (val >> (bitpos + bit)) & uint(1);
+            uint bit_val = isBitSet<uint>(val, bitpos, bit);
             
             accum += bit_val;
             uint newpos;
             if (bit_val == uint(1)) {
-                newpos = accum + local_histo[q_idx];
+                newpos = accum -1 ;
             } else {
                 // we add the prefix of the thread to the local histogram position
                 // and we subtract the accumumulator to get the new position
                 // we offset by threadIdx.x*Q 
-                newpos = prefix_thread + q_offs + q_idx - accum;
+                newpos = prefix_thread + thread_offset + q_idx - accum;
             }
 
             // we write the element to the new position
@@ -163,7 +157,7 @@ __global__ void RankPermuteKer(
             // we copy the elements from the shared memory to the registers
             // in the new position
             for (int q_idx = 0; q_idx < P::Q; q_idx++) {
-                reg[q_idx] = shmem[q_offs + q_idx];
+                reg[q_idx] = shmem[thread_offset + q_idx];
             }
         } else {
             // if we are at the last bit
@@ -193,14 +187,14 @@ __global__ void RankPermuteKer(
         uint16_t local_val = d_hist[global_histo_offs + i];
         uint64_t global_val = d_hist_transposed_scanned_transposed[global_histo_offs + i];
         // we compute the difference between the global and local values
-        shmem[i] = global_val - local_val;
+        global_histo[i] = global_val - local_val;
         local_histo[i] = local_val;
     }
     __syncthreads();
 
     // step 3.2: we perform an exclusive scan on the histogram
     // this can be simulated via an inclusive scan and a shift by one element
-    typename P::UintType res = scanIncBlock<Add<uint16_t>>(local_histo, tid);
+    int res = scanIncBlock<Add<uint16_t>>(local_histo, tid);
     if (tid < P::H-1) {
         global_histo[tid+1] -= res;
     }
@@ -211,7 +205,7 @@ __global__ void RankPermuteKer(
     for (int q_idx = 0; q_idx < P::Q; q_idx++) {
         uint elm = reg[q_idx];
         // we extract the position via the bitpos offset
-        uint32_t pos = (elm >> bitpos) & ((1 << P::lgH) - 1);
+        uint32_t pos = isBitSet<uint>(elm, bitpos, 0, ((1 << P::lgH) - 1));
         uint32_t offs = global_histo[pos];
         uint32_t pos_out = offs+(q_idx*blockDim.x + tid);
 
