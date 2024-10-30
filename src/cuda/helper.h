@@ -139,6 +139,22 @@ void allocateAndInitialize(
 }
 
 
+template <typename T>
+void checkAllZeros(T* ptr, uint32_t size) {
+    bool all_zeros = true;
+    for (uint32_t i = 0; i < size; i++) {
+        if (ptr[i] != 0) {
+            printf("Non-zero value at index %u: %f\n", i, (float)ptr[i]);
+            all_zeros = false;
+            break;
+        }
+    }
+    if (all_zeros) {
+        // raise an error
+        throw std::runtime_error("All zeros");
+    }
+}
+
 
 template <typename UInt, int BLOCK_SIZE>
 void PrepareMemory(

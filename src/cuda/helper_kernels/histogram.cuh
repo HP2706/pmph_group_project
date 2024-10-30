@@ -25,24 +25,23 @@ Histo(
     const uint32_t tid = threadIdx.x;
     const uint32_t bid = blockIdx.x;
     
-    // Offset into global histogram for this block
-    uint32_t* block_hist = hist + (bid * P::H);
-
+    // allocate shared memory for local histogram
     __shared__ typename P::UintType local_hist[P::H]; 
     if (tid < P::H) {
         local_hist[tid] = 0;
     }
     __syncthreads();
 
-    // Calculate the starting position for this thread
-    uint32_t start_pos = bid * blockDim.x * P::Q + tid;
-    const uint32_t stride = blockDim.x;
+    // the global offset is the blockidx times the number of elements per block 
+    // Q(elms per thread)*B(threads per block)
+    const uint32_t global_offset = bid * P::QB;  
 
-    // Process Q elements per thread with proper striding
     for (uint32_t q = 0; q < P::Q; q++) {
-        uint32_t pos = start_pos + q * stride;
-        if (pos < N) {
-            typename P::ElementType val = inp_vals[pos];
+        uint32_t local_position = q * P::BLOCK_SIZE + tid;
+        uint64_t global_position = global_offset + local_position;
+        if (global_position < N) {
+
+            typename P::ElementType val = inp_vals[global_position];
             uint32_t bits = (static_cast<uint32_t>(val) >> bit_pos) & (P::H - 1);
             atomicAdd(&local_hist[bits], 1);  // Need atomicAdd here for shared memory
         }
@@ -51,7 +50,8 @@ Histo(
 
     // Write to global memory
     if (tid < P::H) {
-        block_hist[tid] = local_hist[tid];
+        uint32_t global_offset = bid * P::H;
+        hist[global_offset + tid] = local_hist[tid];
     }
 }
 
