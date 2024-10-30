@@ -4,9 +4,10 @@
 #include "utils.cuh"
 #include "../constants.cuh"
 #include "../helper.h"
+#include <limits>
 /// we use UintType as we are manipulating 
 /// the histograms not the input array elements
-template<class T, int Q, int H, int BLOCK_SIZE>
+template<class T, int Q, int BLOCK_SIZE, int MAXNUMERIC>
 __device__ void GlbToReg(
     uint64_t N, // n elements
     T* shmem,  // shared memory
@@ -21,11 +22,11 @@ __device__ void GlbToReg(
     
     
     // this causes an "illegal memory access" error
-    copyFromGlb2ShrMem<T, QB>(
-        glb_offs, 
-        N, 
-        H,  // the identity value, but in our case to be sure of correct ordering we set it to the maximum value
-        arr, 
+    copyFromGlb2ShrMem<T, Q>(
+        glb_offs,
+        N,
+        MAXNUMERIC,  // the identity value, but in our case to be sure of correct ordering we set it to the maximum value
+        arr,
         shmem  // Updated variable name
     );
 
@@ -83,10 +84,9 @@ __global__ void RankPermuteKer(
     GlbToReg<
         uint, 
         P::Q,  
-        P::H,
-        P::BLOCK_SIZE
+        P::BLOCK_SIZE,
+        P::MAXNUMERIC_ElementType
     >(N, shmem, arr_inp, reg);
-
 
     /* Step 2: Two-way partitioning loop
      * For each bit position (lgH bits total):
@@ -95,7 +95,6 @@ __global__ void RankPermuteKer(
      * 3. Each thread applies prefix to rearrange its elements
      */
 
-    // we 
     uint16_t q_offs = tid * P::Q;
 
     #pragma unroll
@@ -220,7 +219,6 @@ __global__ void RankPermuteKer(
             arr_out[pos_out] = elm;
         }
     }
-
 }
 
 #endif // RANK_PERMUTE_CUH

@@ -7,7 +7,7 @@
 #include <sys/time.h>
 #include <cstdint>
 #include <time.h>
-
+#include <limits>
 #if 0
 typedef int        int32_t;
 typedef long long  int64_t;
@@ -40,6 +40,7 @@ struct Params {
     static constexpr int H = 1 << _lgH; // number of bins, this is simply 2^lgH 
     static constexpr int QB = _Q * _BLOCK_SIZE; // number of elements per block
     static constexpr int HB = H * _BLOCK_SIZE; // size of the histogram array
+    static constexpr int MAXNUMERIC_ElementType = std::numeric_limits<ElTp>::max(); // the maximum value of the input array
     using ElementType = ElTp; // the type of the input array
     using UintType = UintTp; // the type of the histogram
     static constexpr int ELEMS_PER_THREAD_SCAN = _ELEMS_PER_THREAD_SCAN; // number of elements per thread

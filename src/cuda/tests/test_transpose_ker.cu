@@ -28,7 +28,13 @@ void transposeCPU(T* input, T* output, int numRows, int numCols)
 
 
 template<typename T>
-void verifyTranspose(T* cpuInput, T* cpuOutput, T* gpuOutput, int numRows, int numCols)
+void verifyTranspose(
+    T* cpuInput, 
+    T* cpuOutput, 
+    T* gpuOutput, 
+    int numRows, 
+    int numCols
+)
 {
     transposeCPU<T>(cpuInput, cpuOutput, numRows, numCols);
     bool success = true;
@@ -117,7 +123,6 @@ void test_verify_transpose(
     cudaMemcpy(h_histogram_transposed, d_histogram_transposed, sizeof(typename P::UintType) * hist_size, cudaMemcpyDeviceToHost);
     verifyTranspose<typename P::UintType>(h_histogram, cpu_h_histogram_transposed, h_histogram_transposed, P::H, P::GRID_SIZE);
 
-
     tiled_transpose_kernel<typename P::UintType, P::T>(
         d_histogram_transposed,
         d_histogram_transposed_2,
@@ -126,6 +131,7 @@ void test_verify_transpose(
     );
 
     cudaMemcpy(h_histogram_transposed_2, d_histogram_transposed_2, sizeof(typename P::UintType) * hist_size, cudaMemcpyDeviceToHost);
+    printf("\n");
 
     // check if the double transposed histogram is the same as the original histogram
     validate<typename P::UintType>(h_histogram_transposed_2, h_histogram, hist_size);

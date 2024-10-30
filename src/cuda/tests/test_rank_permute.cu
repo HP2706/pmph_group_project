@@ -66,7 +66,12 @@ __host__ void test_call_rank_permute_ker(
     );
 
 
-    RankPermuteKer<P><<<P::GRID_SIZE, P::BLOCK_SIZE>>> 
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start);
+
+    RankPermuteKer<P><<<P::GRID_SIZE, P::BLOCK_SIZE, P::QB*sizeof(typename P::ElementType)>>> 
     (
         d_hist,
         d_hist_transposed_scanned_transposed,
@@ -75,7 +80,14 @@ __host__ void test_call_rank_permute_ker(
         d_in,
         d_out
     );
+    cudaDeviceSynchronize();
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+    printf("RankPermuteKer took %f milliseconds\n", milliseconds);
 
+    //cudaMemcpy(h_out, d_out, sizeof(typename P::ElementType) * input_size, cudaMemcpyDeviceToHost);
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
         printf("Rank and permute kernel failed: %s\n", cudaGetErrorString(err));

@@ -109,7 +109,14 @@ void CountSort(
         return;
     }
 
-    RankPermuteKer<P><<<P::GRID_SIZE, P::BLOCK_SIZE>>>(
+    // 
+    RankPermuteKer<P>
+    <<<
+        P::GRID_SIZE, 
+        P::BLOCK_SIZE,  
+        P::QB*sizeof(typename P::ElementType) // shared memory size
+    >>>
+    (
         d_hist,
         d_hist_transposed_scanned_transposed,
         bit_pos,

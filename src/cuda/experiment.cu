@@ -17,7 +17,7 @@ int main() {
 
     // setup params
 
-    const uint32_t input_size = 1000000;
+    const uint32_t input_size = 10000000;
     const uint32_t Q = 22;
     const uint32_t lgH = 8;
     const uint32_t BLOCK_SIZE = 256;
@@ -40,9 +40,9 @@ int main() {
 
 
     //test_verify_transpose<P>(input_size);
-    test_call_rank_permute_ker<P>(input_size);
+    //test_call_rank_permute_ker<P>(input_size);
 
-    //test_count_sort<P>(input_size);
+    test_count_sort<P>(input_size);
     //printf("CountSort done\n");
 
     //test_histo_ker<P>(input_size);

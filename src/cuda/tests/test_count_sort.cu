@@ -128,7 +128,7 @@ __host__ void test_count_sort(
     //we copy the host input to the cub array
     memcpy(cub_h_in, h_in, sizeof(typename P::ElementType) * input_size);
 
-    /*
+    
     // we check that the host input and cub input are the same
     assert(validate(cub_h_in, h_in, input_size));
 
@@ -149,9 +149,9 @@ __host__ void test_count_sort(
     );
 
     cudaMemcpy(cub_h_out, cub_d_out, sizeof(typename P::ElementType) * input_size, cudaMemcpyDeviceToHost);
-    */
 
-    /* CountSort<P>(
+
+    CountSort<P>(
         d_in, 
         d_out, 
         d_hist, 
@@ -161,7 +161,14 @@ __host__ void test_count_sort(
         d_tmp, 
         input_size, 
         0 // we use a bit position of 0 for this test
-    ); */
+    );
+
+    cudaDeviceSynchronize();
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("count sort kernel failed: %s\n", cudaGetErrorString(err));
+        return;
+    }
 
 
     // TODO
@@ -171,8 +178,18 @@ __host__ void test_count_sort(
     // check that P is an instance of Params
     static_assert(is_params<P>::value, "P must be an instance of Params");
 
+    cudaMemcpy(h_out, d_out, sizeof(typename P::ElementType) * input_size, cudaMemcpyDeviceToHost);
 
-    uint32_t bit_pos = 0;
+    // we check that the host output and cub output are the same
+    
+    for (uint32_t i = 0; i < 1000; i++) {
+        printf("%d: %d %d\n", i, cub_h_out[i], h_out[i]);
+    }
+    
+    assert(validate(cub_h_out, h_out, input_size));
+
+
+    /* uint32_t bit_pos = 0;
     uint32_t N = input_size;
 
     Histo<P><<<P::GRID_SIZE, P::BLOCK_SIZE>>>(
@@ -275,12 +292,7 @@ __host__ void test_count_sort(
         printf("CountSort Error: %s\n", cudaGetErrorString(err));
         exit(1);
     }
-
-
-    /* cudaMemcpy(h_out, d_out, sizeof(typename P::ElementType) * input_size, cudaMemcpyDeviceToHost);
-
-    // we check that the host output and cub output are the same
-    assert(validate(cub_h_out, h_out, input_size)); */
+    */
 
 
 
