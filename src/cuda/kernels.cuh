@@ -58,7 +58,7 @@ void CountSort(
         N, 
         bit_pos
     );
-    
+    cudaDeviceSynchronize();
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
         printf("Histogram kernel failed: %s\n", cudaGetErrorString(err));
@@ -71,6 +71,7 @@ void CountSort(
         P::H,
         P::GRID_SIZE
     );
+    cudaDeviceSynchronize();
     err = cudaGetLastError();
     if (err != cudaSuccess) {
         printf("First transpose kernel failed: %s\n", cudaGetErrorString(err));
@@ -85,6 +86,7 @@ void CountSort(
         d_hist_transposed,
         d_tmp              // temporary storage
     );
+    cudaDeviceSynchronize();
     err = cudaGetLastError();
     if (err != cudaSuccess) {
         printf("Scan kernel failed: %s\n", cudaGetErrorString(err));
@@ -99,6 +101,7 @@ void CountSort(
         P::GRID_SIZE,
         P::H
     );
+    cudaDeviceSynchronize();
     err = cudaGetLastError();
     if (err != cudaSuccess) {
         printf("Second transpose kernel failed: %s\n", cudaGetErrorString(err));
@@ -113,6 +116,8 @@ void CountSort(
         d_in,
         d_out
     );
+    
+    cudaDeviceSynchronize();
     err = cudaGetLastError();
     if (err != cudaSuccess) {
         printf("Rank and permute kernel failed: %s\n", cudaGetErrorString(err));
