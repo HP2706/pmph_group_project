@@ -107,7 +107,7 @@ void test_verify_transpose(
         cpu_h_histogram_transposed[i] = 0;
     }
 
-    transpose_kernel<P>(
+    tiled_transpose_kernel<typename P::UintType, P::T>(
         d_histogram,
         d_histogram_transposed,
         P::H,
@@ -118,7 +118,7 @@ void test_verify_transpose(
     verifyTranspose<typename P::UintType>(h_histogram, cpu_h_histogram_transposed, h_histogram_transposed, P::H, P::GRID_SIZE);
 
 
-    transpose_kernel<P>(
+    tiled_transpose_kernel<typename P::UintType, P::T>(
         d_histogram_transposed,
         d_histogram_transposed_2,
         P::GRID_SIZE,

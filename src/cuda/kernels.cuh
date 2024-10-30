@@ -7,29 +7,29 @@
 #include "helper.h"
 
 
-template<class P>
-void transpose_kernel(
-    typename P::UintType* input,          // renamed from d_hist
-    typename P::UintType* output,         // renamed from d_hist_transposed
+template<class T, int TILE_SIZE>
+void tiled_transpose_kernel(
+    T* input,          // renamed from d_hist
+    T* output,         // renamed from d_hist_transposed
     const uint32_t height,
     const uint32_t width
 ) {
-    static_assert(is_params<P>::value, "P must be an instance of Params");
-    const uint32_t T = P::T;
-
     // 1. setup block and grid parameters
-    int  dimy = (height+T-1) / T; 
-    int  dimx = (width +T-1) / T;
-    dim3 block(T, T, 1);
+    int  dimy = (height+TILE_SIZE-1) / TILE_SIZE; 
+    int  dimx = (width +TILE_SIZE-1) / TILE_SIZE;
+    dim3 block(TILE_SIZE, TILE_SIZE, 1);
     dim3 grid (dimx, dimy, 1);
 
-    coalsTransposeKer<typename P::UintType, T> <<<grid, block>>>(
+    coalsTransposeKer<T, TILE_SIZE> <<<grid, block>>>(
         input,
         output,
         height,    // This should be NUM_BINS for your case
         width      // This should be SIZE/NUM_BINS for your case
     );
 }
+
+
+
 
 
 template<class P>
@@ -44,6 +44,11 @@ void CountSort(
     uint32_t N,
     uint32_t bit_pos
 ) {
+
+    // TODO
+    // we should use different uint types for the histogram and the scanned histogram
+    // for a faster kernel
+
     // check that P is an instance of Params
     static_assert(is_params<P>::value, "P must be an instance of Params");
 
@@ -53,14 +58,26 @@ void CountSort(
         N, 
         bit_pos
     );
+    
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("Histogram kernel failed: %s\n", cudaGetErrorString(err));
+        return;
+    }
 
-    transpose_kernel<P>(
+    tiled_transpose_kernel<typename P::UintType, P::T>(
         d_hist,
         d_hist_transposed,
         P::H,
         P::GRID_SIZE
     );
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("First transpose kernel failed: %s\n", cudaGetErrorString(err));
+        return;
+    }
 
+    // in the future use something like FusedAddCast<uint16_t, uint32_t>
     scanInc<Add<typename P::UintType>>(
         P::BLOCK_SIZE, // Block size
         P::HB,          // Histogram size
@@ -68,18 +85,27 @@ void CountSort(
         d_hist_transposed,
         d_tmp              // temporary storage
     );
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("Scan kernel failed: %s\n", cudaGetErrorString(err));
+        return;
+    }
 
     // we do inclusive scan here
     // transpose back to original histogram
-    transpose_kernel<P>(
+    tiled_transpose_kernel<typename P::UintType, P::T>(
         d_hist_transposed_scanned,
-        d_hist_transposed_scanned_transposed, // we write back to the double transposed histogram that is now scanned
+        d_hist_transposed_scanned_transposed,
         P::GRID_SIZE,
         P::H
     );
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("Second transpose kernel failed: %s\n", cudaGetErrorString(err));
+        return;
+    }
 
-    RankPermuteKer<P> <<<P::GRID_SIZE, P::BLOCK_SIZE>>> 
-    (
+    RankPermuteKer<P><<<P::GRID_SIZE, P::BLOCK_SIZE>>>(
         d_hist,
         d_hist_transposed_scanned_transposed,
         bit_pos,
@@ -87,6 +113,11 @@ void CountSort(
         d_in,
         d_out
     );
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("Rank and permute kernel failed: %s\n", cudaGetErrorString(err));
+        return;
+    }
 }
 
 template<class P>
