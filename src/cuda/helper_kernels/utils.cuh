@@ -91,4 +91,46 @@ void __cudassert(cudaError_t code,
   }
 }
 
+
+
+
+/**
+ * Generic Add operator with output type casting. Can be instantiated over
+ * numeric types, with different input and output types.
+ * For example: FusedAddCast<int, float> will add integers but return floats.
+ */
+template<class InT, class OutT>
+class FusedAddCast {
+  public:
+    typedef InT InpElTp;   // Type of input elements
+    typedef OutT RedElTp;  // Type of reduced/output elements
+    static const bool commutative = true;
+    
+    static __device__ __host__ inline InT identInp() { 
+        return (InT)0; 
+    }
+    
+    static __device__ __host__ inline OutT mapFun(const InT& el) { 
+        return (OutT)el; 
+    }
+    
+    static __device__ __host__ inline OutT identity() { 
+        return (OutT)0; 
+    }
+    
+    static __device__ __host__ inline OutT apply(const OutT t1, const OutT t2) { 
+        return t1 + t2; 
+    }
+
+    static __device__ __host__ inline bool equals(const OutT t1, const OutT t2) { 
+        return (t1 == t2); 
+    }
+    
+    static __device__ __host__ inline OutT remVolatile(volatile OutT& t) { 
+        OutT res = t; 
+        return res; 
+    }
+};
+
+
 #endif

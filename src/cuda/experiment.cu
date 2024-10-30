@@ -8,7 +8,8 @@
 #include "tests/test_transpose_ker.cu"
 #include "tests/test_scan_inc.cu"
 #include "tests/test_count_sort.cu"
-
+#include "tests/test_rank_permute.cu"
+#include "tests/test_histo_ker.cu"
 #include <cuda_runtime.h>
 
 int main() {
@@ -24,6 +25,8 @@ int main() {
     const uint32_t ELEMS_PER_THREAD_SCAN = 22;
     const uint32_t GRID_SIZE = (input_size + (BLOCK_SIZE * Q - 1)) / (BLOCK_SIZE * Q);
 
+    printf("grid size : %u\n", GRID_SIZE);
+
     using P = Params<
         uint8_t, 
         uint32_t, 
@@ -36,9 +39,12 @@ int main() {
     >;
 
 
-    test_count_sort<P>(input_size);
-   
     //test_verify_transpose<P>(input_size);
+    test_call_rank_permute_ker<P>(input_size);
 
+    //test_count_sort<P>(input_size);
+    //printf("CountSort done\n");
+
+    //test_histo_ker<P>(input_size);
 
 }

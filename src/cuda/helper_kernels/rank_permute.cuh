@@ -6,47 +6,58 @@
 #include "../helper.h"
 /// we use UintType as we are manipulating 
 /// the histograms not the input array elements
-template<class P>
+template<class T, int Q, int H, int BLOCK_SIZE>
 __device__ void GlbToReg(
     uint64_t N, // n elements
-    typename P::UintType* shmem,  // shared memory
-    typename P::UintType* arr,  // global memory
-    typename P::UintType* reg  // registers
+    T* shmem,  // shared memory
+    T* arr,  // global memory
+    T reg[Q]  // registers with Q elements
 ) {
-
-    // check that P is an instance of Params
-    static_assert(is_params<P>::value, "P must be an instance of Params");
-
     const uint32_t tid = threadIdx.x;
+    const uint32_t QB = BLOCK_SIZE * Q;
 
     // 1. Read from global to shared memory
-    const uint64_t glb_offs = blockIdx.x * P::QB;
-
-    copyFromGlb2ShrMem<typename P::UintType, P::QB>(
+    const uint64_t glb_offs = blockIdx.x * QB;
+    
+    
+    // this causes an "illegal memory access" error
+    copyFromGlb2ShrMem<T, QB>(
         glb_offs, 
         N, 
-        P::H,  // the identity value, but in our case to be sure of correct ordering we set it to the maximum value
+        H,  // the identity value, but in our case to be sure of correct ordering we set it to the maximum value
         arr, 
         shmem  // Updated variable name
     );
-    
+
+   /* // copy from global to shared memory
+   for (int q = 0; q < Q; q++) {
+        uint32_t shmem_pos = q*BLOCK_SIZE + tid;
+        uint64_t glb_pos = glb_offs + shmem_pos;
+
+        T elm = H;
+        if (glb_pos < N) {
+            elm = arr[glb_pos];
+        }
+        shmem[shmem_pos] = elm;
+   }
+   */
+    __syncthreads(); 
+
     // 2. Read from shared memory to registers
-    for (int i = 0; i < P::Q; i++) {
-        reg[i] = shmem[P::Q*threadIdx.x + i];
+    for (int i = 0; i < Q; i++) {
+        reg[i] = shmem[Q*threadIdx.x + i];
     }
     __syncthreads();
 }
-
-
 
 // this is not a kernel but a compound function that calls many kernels
 template<class P>
 __global__ void RankPermuteKer(
     typename P::UintType* d_hist,
-    typename P::UintType* d_hist_transposed_scanned_transposed,
+    typename P::UintType* d_hist_transposed_scanned_transposed, // as we are using scan we have higher integer values and thus need to use uint64_t
     uint32_t bitpos, 
     uint32_t N,
-    typename P::ElementType* arr_inp,
+    typename P::ElementType* arr_inp, // this is either uint8_t, uint16_t or uint32_t or uint64_t
     typename P::ElementType* arr_out
 ) {
     // check that P is an instance of Params
@@ -54,25 +65,27 @@ __global__ void RankPermuteKer(
 
     uint32_t tid = threadIdx.x;
     uint32_t bid = blockIdx.x;
-    using uint = typename P::UintType;
+    using uint = typename P::ElementType;
 
-    // Changed declaration to match the one in pbb_kernels.cuh
-    extern __shared__ char sh_mem[];
-    uint* shmem = (uint*)(sh_mem);
-    uint64_t* global_histo = (uint64_t*)(sh_mem);
 
-    // we allocate the local histogram offset by the histogram length
-    // we use uint16_t as the maximum number of elements is 
-    // 2^max(lgH) = 2^8 = 256
-    // and as we only need the local histogram position uint16_t is enough
-    uint16_t* local_histo = (uint16_t*) (sh_mem + P::H);
+    extern __shared__ uint64_t sh_mem_uint64[];
+    
+    uint* shmem = (uint*) sh_mem_uint64;
+
+    uint64_t* global_histo = (uint64_t*) sh_mem_uint64;
+    uint16_t* local_histo = (uint16_t*) (global_histo + P::H);
 
     // we allocate the registers
     // Q elements per thread
     uint reg[P::Q];
 
-    GlbToReg<P>(N, shmem, d_hist, reg);
-
+    // illegal memory access here
+    GlbToReg<
+        uint, 
+        P::Q,  
+        P::H,
+        P::BLOCK_SIZE
+    >(N, shmem, arr_inp, reg);
 
 
     /* Step 2: Two-way partitioning loop
@@ -197,7 +210,7 @@ __global__ void RankPermuteKer(
     // step 3.3: we write the elements to their final positions 
     // in global memory q elements per thread
     for (int q_idx = 0; q_idx < P::Q; q_idx++) {
-        typename P::ElementType elm = reg[q_idx];
+        uint elm = reg[q_idx];
         // we extract the position via the bitpos offset
         uint32_t pos = (elm >> bitpos) & ((1 << P::lgH) - 1);
         uint32_t offs = global_histo[pos];
@@ -207,6 +220,7 @@ __global__ void RankPermuteKer(
             arr_out[pos_out] = elm;
         }
     }
+
 }
 
 #endif // RANK_PERMUTE_CUH
