@@ -75,6 +75,15 @@ uint32_t getNumBlocks(const uint32_t N, const uint32_t B, uint32_t* num_chunks) 
     }    
 }
 
+template<class T>
+bool __device__ isBitUnset(int pos, T val) {
+    return (val & (1 << pos)) == 0;
+}
+
+template<class T, int lgH>
+int __device__ getBits(int pos, T val) {
+    return (val >> pos) & ((1 << lgH) - 1);
+}
 
 #define CUDASSERT(code) { __cudassert((code), __FILE__, __LINE__); }
 #define CUDACHECK(code) { __cudassert((code), __FILE__, __LINE__, false); }
@@ -90,8 +99,6 @@ void __cudassert(cudaError_t code,
         exit(1);
   }
 }
-
-
 
 
 /**

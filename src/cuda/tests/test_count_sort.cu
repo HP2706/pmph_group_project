@@ -15,6 +15,7 @@
 #include "../kernels.cuh"
 #include "../cub_kernel.cuh"
 #include <cuda_runtime.h>
+#include "../helper.h"
 
 template<typename P>
 __host__ void test_count_sort(
@@ -61,56 +62,56 @@ __host__ void test_count_sort(
 
     printf("allocating memory\n");
 
-    allocateAndInitialize<typename P::ElementType>(
+    allocateAndInitialize<typename P::ElementType, P::MAXNUMERIC_ElementType>(
         &h_in,
         &d_in,
         input_size,
         true // we initialize to random values
     );
 
-    allocateAndInitialize<typename P::ElementType>(
+    allocateAndInitialize<typename P::ElementType, P::MAXNUMERIC_ElementType>(
         &h_out,
         &d_out,
         input_size,
         false // we initialize to 0
     );
 
-    allocateAndInitialize<typename P::UintType>(
+    allocateAndInitialize<typename P::UintType, P::MAXNUMERIC_UintType>(
         &h_hist,
         &d_hist,
         hist_size,
         false // we initialize to random values
     );
 
-    allocateAndInitialize<typename P::UintType>(
+    allocateAndInitialize<typename P::UintType, P::MAXNUMERIC_UintType>(
         &h_hist_transposed,
         &d_hist_transposed,
         hist_size,
         false // we initialize to 0
     );
 
-    allocateAndInitialize<typename P::UintType>(
+    allocateAndInitialize<typename P::UintType, P::MAXNUMERIC_UintType>(
         &h_hist_transposed_scanned,
         &d_hist_transposed_scanned,
         hist_size,
         false // we initialize to 0
     );
 
-    allocateAndInitialize<typename P::UintType>(
+    allocateAndInitialize<typename P::UintType, P::MAXNUMERIC_UintType>(
         &h_hist_transposed_scanned_transposed,
         &d_hist_transposed_scanned_transposed,
         hist_size,
         false // we initialize to 0
     );
 
-    allocateAndInitialize<typename P::UintType>(
+    allocateAndInitialize<typename P::UintType, P::MAXNUMERIC_UintType>(
         nullptr,
         &d_tmp,
         hist_size,
         false // we initialize to 0
     );
 
-    allocateAndInitialize<typename P::ElementType>(
+    allocateAndInitialize<typename P::ElementType, P::MAXNUMERIC_ElementType>(
         &cub_h_out,
         &cub_d_out,
         input_size,
@@ -118,13 +119,15 @@ __host__ void test_count_sort(
     ); 
 
     // cub allocations
-    allocateAndInitialize<typename P::ElementType>(
+    allocateAndInitialize<typename P::ElementType, P::MAXNUMERIC_ElementType>(
         &cub_h_in,
         &cub_d_in,
         input_size,
         false // we initialize to 0 and copy from h_in
     );
 
+
+    #if 1
     //we copy the host input to the cub array
     memcpy(cub_h_in, h_in, sizeof(typename P::ElementType) * input_size);
 
@@ -137,6 +140,7 @@ __host__ void test_count_sort(
 
     printf("computing cub kernel\n");
 
+    
     CUBSortKernel<
         typename P::ElementType, 
         P::BLOCK_SIZE, 
@@ -149,7 +153,15 @@ __host__ void test_count_sort(
     );
 
     cudaMemcpy(cub_h_out, cub_d_out, sizeof(typename P::ElementType) * input_size, cudaMemcpyDeviceToHost);
-
+    
+    /* // we check that the cub output is sorted
+    if (!checkSorted(cub_h_out, input_size)) {
+        printf("CUB kernel failed\n");
+        for (uint32_t i = 0; i < input_size; i++) {
+            printf("%d: %d\n", i, cub_h_out[i]);
+        }
+        return;
+    } */
 
     CountSort<P>(
         d_in, 
@@ -170,26 +182,27 @@ __host__ void test_count_sort(
         return;
     }
 
-
-    // TODO
-    // we should use different uint types for the histogram and the scanned histogram
-    // for a faster kernel
-
-    // check that P is an instance of Params
-    static_assert(is_params<P>::value, "P must be an instance of Params");
-
     cudaMemcpy(h_out, d_out, sizeof(typename P::ElementType) * input_size, cudaMemcpyDeviceToHost);
 
-    // we check that the host output and cub output are the same
-    
-    for (uint32_t i = 0; i < 1000; i++) {
-        printf("%d: %d %d\n", i, cub_h_out[i], h_out[i]);
+    /* if (!checkSorted(h_out, input_size)) {
+        printf("count sort kernel is not sorted\n");
+        for (uint32_t i = 0; i < input_size; i++) {
+            printf("%d: %d\n", i, h_out[i]);
+        }
+        return;
+    } */
+
+    // printing the top 100 elements
+    for (uint32_t i = 0; i < 100; i++) {
+        int idx = input_size - 1 - i;
+        printf("cub_h_out[%d]: %d, h_out[%d]: %d\n", idx, cub_h_out[idx], idx, h_out[idx]);
     }
-    
     assert(validate(cub_h_out, h_out, input_size));
 
+    #else 
+    
 
-    /* uint32_t bit_pos = 0;
+    uint32_t bit_pos = 0;
     uint32_t N = input_size;
 
     Histo<P><<<P::GRID_SIZE, P::BLOCK_SIZE>>>(
@@ -208,7 +221,6 @@ __host__ void test_count_sort(
 
     cudaMemcpy(h_hist, d_hist, sizeof(typename P::UintType) * hist_size, cudaMemcpyDeviceToHost);
     checkAllZeros(h_hist, hist_size);
-    printf("Histogram kernel done and checked all zeros\n");
 
     tiled_transpose_kernel<typename P::UintType, P::T>(
         d_hist,
@@ -224,7 +236,6 @@ __host__ void test_count_sort(
     }
     cudaMemcpy(h_hist_transposed, d_hist_transposed, sizeof(typename P::UintType) * hist_size, cudaMemcpyDeviceToHost);
     checkAllZeros(h_hist_transposed, hist_size);
-    printf("First transpose kernel done and checked all zeros\n");
 
     // in the future use something like FusedAddCast<uint16_t, uint32_t>
     scanInc<Add<typename P::UintType>>(
@@ -237,7 +248,6 @@ __host__ void test_count_sort(
 
     cudaMemcpy(h_hist_transposed_scanned, d_hist_transposed_scanned, sizeof(typename P::UintType) * hist_size, cudaMemcpyDeviceToHost);
     checkAllZeros(h_hist_transposed_scanned, hist_size);
-    printf("Scan kernel done and checked all zeros\n");
     
     err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -268,7 +278,19 @@ __host__ void test_count_sort(
     checkAllZeros(h_hist_transposed_scanned_transposed, hist_size);
     printf("Third transpose kernel done and checked all zeros\n");
 
-    RankPermuteKer<P><<<P::GRID_SIZE, P::BLOCK_SIZE>>>(
+
+    bool debug_enabled = true;
+        // Example kernel launch setup (outside the kernel):
+    typename P::ElementType* d_debug_reg_states = nullptr;
+    uint16_t* d_debug_local_histo = nullptr;
+    typename P::ElementType* d_debug_shmem_states = nullptr;
+
+
+    int shm_size = (P::QB*sizeof(typename P::UintType))+1000;
+
+
+    // Kernel launch
+    RankPermuteKer<P><<<P::GRID_SIZE, P::BLOCK_SIZE, shm_size>>>(
         d_hist,
         d_hist_transposed_scanned_transposed,
         bit_pos,
@@ -292,7 +314,8 @@ __host__ void test_count_sort(
         printf("CountSort Error: %s\n", cudaGetErrorString(err));
         exit(1);
     }
-    */
+
+    #endif
 
 
 

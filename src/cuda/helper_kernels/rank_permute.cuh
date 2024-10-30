@@ -1,9 +1,9 @@
 #ifndef RANK_PERMUTE_CUH
 #define RANK_PERMUTE_CUH
 
-#include "utils.cuh"
 #include "../constants.cuh"
 #include "../helper.h"
+#include "utils.cuh"
 #include <limits>
 /// we use UintType as we are manipulating 
 /// the histograms not the input array elements
@@ -40,75 +40,33 @@ __device__ void GlbToReg(
 }
 
 
-template<class T>
-__device__ T isBitSet(T val, int bitpos, int bit, T compar = T(1)) {
-    return (val >> (bitpos + bit)) & compar;
-}
 
-
-// this is not a kernel but a compound function that calls many kernels
 template<class P>
-__global__ void RankPermuteKer(
-    typename P::UintType* d_hist,
-    typename P::UintType* d_hist_transposed_scanned_transposed, // as we are using scan we have higher integer values and thus need to use uint64_t
-    uint32_t bitpos, 
-    uint32_t N,
-    typename P::ElementType* arr_inp, // this is either uint8_t, uint16_t or uint32_t or uint64_t
-    typename P::ElementType* arr_out
-) {
-    // check that P is an instance of Params
-    static_assert(is_params<P>::value, "P must be an instance of Params");
-
+__device__ void Partition2Way(
+    typename P::ElementType reg[P::Q], // Q elements per thread in registers
+    typename P::ElementType* shmem, // shared memory
+    uint16_t* local_histo, // local histogram in shared memory
+    uint32_t bitpos // position of the bit in the element
+){
+    
     uint32_t tid = threadIdx.x;
     uint32_t bid = blockIdx.x;
-    using uint = typename P::ElementType;
-
-
-    extern __shared__ uint64_t sh_mem_uint64[];
-    
-    uint* shmem = (uint*) sh_mem_uint64;
-
-    uint64_t* global_histo = (uint64_t*) sh_mem_uint64;
-    uint16_t* local_histo = (uint16_t*) (global_histo + P::H);
-
-    // we allocate the registers
-    // Q elements per thread
-    uint reg[P::Q];
-
-    // illegal memory access here
-    GlbToReg<
-        uint, 
-        P::Q,  
-        P::BLOCK_SIZE,
-        P::MAXNUMERIC_ElementType
-    >(N, shmem, arr_inp, reg);
-
-    /* Step 2: Two-way partitioning loop
-     * For each bit position (lgH bits total):
-     * 1. Each thread sequentially reduces its Q elements in registers
-     * 2. Perform parallel block-level scan across all threads
-     * 3. Each thread applies prefix to rearrange its elements
-    */
-
     uint16_t thread_offset = tid * P::Q;
 
-    #pragma unroll
     for (int bit = 0; bit < P::lgH; bit++) {
+
         // Phase 1: Sequential reduction of Q elements
         // we can use uint16_t because the maximum number of elements is 1 << lgH = 2^lgH = 2^8 = 256
         uint16_t accum = 0;
-        #pragma unroll
         for (int q_idx = 0; q_idx < P::Q; q_idx++) {
             // we shift by bit to get the bit value and we mask it with 1 to get the boolean value
             // we first shift by the bitpos offset and then by the current bit from 0 to lgH-1
-            uint16_t res = isBitSet<uint>(reg[q_idx], bitpos, bit);
+            uint16_t res = isBitUnset<uint>(bitpos + bit, reg[q_idx]);
             accum += res;
         }
         
-
         // the thread local count is stored in the local histogram
         local_histo[tid] = accum;
-
 
         // we scan the local histogram
         uint16_t res = scanIncBlock<Add<uint16_t>>(local_histo, tid);
@@ -127,16 +85,29 @@ __global__ void RankPermuteKer(
         } else {
             accum = local_histo[tid-1];
         }
-
-        // wait for all threads to have accum
         __syncthreads();
+
+        /* if (tid == 0 && bid == 0) {
+            // print the local histogram
+            printf("Local histogram: ");
+            for (int i = 0; i < P::BLOCK_SIZE; i++) {
+                printf("%d ", local_histo[i]);
+            }
+            printf("\n");
+
+            printf("Prefix thread: %d\n", prefix_thread);
+            printf("Accum: %d\n", accum);
+        } 
+        __syncthreads(); */
+
         // we rearrange the elements based on the bit value
         for (int q_idx = 0; q_idx < P::Q; q_idx++) {
             uint val = reg[q_idx];
-            uint bit_val = isBitSet<uint>(val, bitpos, bit);
+            uint16_t bit_val = (uint16_t) isBitUnset<uint>(bitpos + bit, val);
             
             accum += bit_val;
-            uint newpos;
+
+            int newpos;
             if (bit_val == uint(1)) {
                 newpos = accum -1 ;
             } else {
@@ -145,7 +116,6 @@ __global__ void RankPermuteKer(
                 // we offset by threadIdx.x*Q 
                 newpos = prefix_thread + thread_offset + q_idx - accum;
             }
-
             // we write the element to the new position
             shmem[newpos] = val;
         }
@@ -168,7 +138,152 @@ __global__ void RankPermuteKer(
             }
         }
         __syncthreads();
+
+        // After computing histogram
+        if (debug_local_histo) {
+            debug_local_histo[tid + bit * P::BLOCK_SIZE] = local_histo[tid];
+        }
+
+        // After rearrangement, save register state
+        if (debug_reg_states) {
+            for (int q_idx = 0; q_idx < P::Q; q_idx++) {
+                debug_reg_states[tid * P::Q + q_idx + bit * P::BLOCK_SIZE * P::Q] = reg[q_idx];
+            }
+        }
+
+        // After shared memory updates
+        if (debug_shmem_states) {
+            for (int i = 0; i < P::BLOCK_SIZE * P::Q; i++) {
+                debug_shmem_states[i + bit * P::BLOCK_SIZE * P::Q] = shmem[i];
+            }
+        }
+
+        __syncthreads();
     }
+}
+
+template<class P>
+__device__ void WriteOutput(
+    typename P::ElementType reg[P::Q],
+    uint64_t* global_histo,
+    uint16_t* local_histo,
+    typename P::UintType* d_hist,
+    typename P::UintType* d_hist_transposed_scanned_transposed,
+    uint32_t bitpos,
+    uint32_t N,
+    typename P::ElementType* arr_out
+) {
+    uint32_t tid = threadIdx.x;
+    uint32_t bid = blockIdx.x;
+
+    // step 3.1: copy histogram from global to shared memory
+    uint32_t global_histo_offs = bid * P::H;
+    for (int i = threadIdx.x; i < P::H; i += P::BLOCK_SIZE) {
+        uint16_t local_val = d_hist[global_histo_offs + i];
+        uint64_t global_val = d_hist_transposed_scanned_transposed[global_histo_offs + i];
+        global_histo[i] = global_val - local_val;
+        local_histo[i] = local_val;
+    }
+    __syncthreads();
+
+    // step 3.2: perform exclusive scan on the histogram
+    int res = scanIncBlock<Add<uint16_t>>(local_histo, tid);
+    if (tid < P::H-1) {
+        global_histo[tid+1] -= res;
+    }
+    __syncthreads();
+
+    // step 3.3: write elements to their final positions
+    for (int q_idx = 0; q_idx < P::Q; q_idx++) {
+        typename P::ElementType elm = reg[q_idx];
+        int bin = getBits<uint, P::lgH>(bitpos, elm);
+        uint32_t global_offs = global_histo[bin];
+        uint32_t global_pos = global_offs + (q_idx*P::BLOCK_SIZE + tid);
+
+        if (global_pos < N) {
+            arr_out[global_pos] = elm;
+        }
+    }
+}
+
+template<class P>
+__launch_bounds__(P::BLOCK_SIZE, 1024/P::BLOCK_SIZE)
+__global__ void RankPermuteKer(
+    typename P::UintType* d_hist,
+    typename P::UintType* d_hist_transposed_scanned_transposed, // as we are using scan we have higher integer values and thus need to use uint64_t
+    uint32_t bitpos, 
+    uint32_t N,
+    typename P::ElementType* arr_inp, // this is either uint8_t, uint16_t or uint32_t or uint64_t
+    typename P::ElementType* arr_out
+) {
+    // check that P is an instance of Params
+    static_assert(is_params<P>::value, "P must be an instance of Params");
+
+    uint32_t tid = threadIdx.x;
+    uint32_t bid = blockIdx.x;
+    using uint = typename P::ElementType;
+
+    // we allocate shared memory of size
+    // note as we use extern __shared__ we declare shared memory in the launch call
+    extern __shared__ uint64_t sh_mem_uint64[];
+    uint* shmem = (uint*) sh_mem_uint64;
+
+    // we use uint64_t for the global histogram
+    // to avoid overflows
+    uint64_t* global_histo = (uint64_t*) sh_mem_uint64;
+
+    // the local histogram can work with uint16_t 
+    // as local position are much smaller
+    // in this way we save memory bandwidth 
+    uint16_t* local_histo = (uint16_t*) (global_histo + P::H);
+
+    // we allocate the registers
+    // Q elements per thread
+    uint reg[P::Q];
+
+    GlbToReg<
+        uint, 
+        P::Q,  
+        P::BLOCK_SIZE,
+        P::MAXNUMERIC_ElementType
+    >(N, shmem, arr_inp, reg);
+
+
+    /* // Add debug printing after loading registers
+    if (threadIdx.x == 0 && blockIdx.x == 0) {
+        printf("RANKPERMUTE - Initial register values for thread %d:\n", threadIdx.x);
+        for (int q = 0; q < P::Q; q++) {
+            printf("reg[%d] = %u\n", q, reg[q]);
+        }
+    }
+    __syncthreads(); */
+
+    /* Step 2: Two-way partitioning loop
+     * For each bit position (lgH bits total):
+     * 1. Each thread sequentially reduces its Q elements in registers
+     * 2. Perform parallel block-level scan across all threads
+     * 3. Each thread applies prefix to rearrange its elements
+    */
+
+    Partition2Way<P>(
+        reg, 
+        shmem, 
+        local_histo,
+        bitpos,
+        debug_reg_states,
+        debug_local_histo,
+        debug_shmem_states
+    );
+
+    /* // Add debug printing after loading registers
+    if (threadIdx.x == 0 && blockIdx.x == 0) {
+        printf("RANKPERMUTE - register values for thread %d after partitioning:\n", threadIdx.x);
+        for (int q = 0; q < P::Q; q++) {
+            printf("reg[%d] = %u\n", q, reg[q]);
+        }
+    }
+    __syncthreads(); */
+
 
     /* Step 3: Final output generation
      * 1. Copy original and scanned histograms from global to shared memory
@@ -176,43 +291,17 @@ __global__ void RankPermuteKer(
      * 3. Each thread writes its Q elements to their final positions in global memory
      *    using the histogram information
     */
-    
-    // step 3.1: we copy the histogram from global to shared memory
 
-    // the offset for each block in the global histogram
-    uint32_t global_histo_offs = bid * P::H;
-
-    // we write the histogram from global to shared memory
-    for (int i = threadIdx.x; i < P::H; i += blockDim.x) {
-        uint16_t local_val = d_hist[global_histo_offs + i];
-        uint64_t global_val = d_hist_transposed_scanned_transposed[global_histo_offs + i];
-        // we compute the difference between the global and local values
-        global_histo[i] = global_val - local_val;
-        local_histo[i] = local_val;
-    }
-    __syncthreads();
-
-    // step 3.2: we perform an exclusive scan on the histogram
-    // this can be simulated via an inclusive scan and a shift by one element
-    int res = scanIncBlock<Add<uint16_t>>(local_histo, tid);
-    if (tid < P::H-1) {
-        global_histo[tid+1] -= res;
-    }
-    __syncthreads();
-
-    // step 3.3: we write the elements to their final positions 
-    // in global memory q elements per thread
-    for (int q_idx = 0; q_idx < P::Q; q_idx++) {
-        uint elm = reg[q_idx];
-        // we extract the position via the bitpos offset
-        uint32_t pos = isBitSet<uint>(elm, bitpos, 0, ((1 << P::lgH) - 1));
-        uint32_t offs = global_histo[pos];
-        uint32_t pos_out = offs+(q_idx*blockDim.x + tid);
-
-        if (pos_out < N) {
-            arr_out[pos_out] = elm;
-        }
-    }
+    WriteOutput<P>(
+        reg,
+        global_histo,
+        local_histo,
+        d_hist,
+        d_hist_transposed_scanned_transposed,
+        bitpos,
+        N,
+        arr_out
+    );
 }
 
 #endif // RANK_PERMUTE_CUH

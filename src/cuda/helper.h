@@ -28,7 +28,6 @@ template<
     int _lgH, 
     int _GRID_SIZE, 
     int _BLOCK_SIZE, 
-    int _ELEMS_PER_THREAD_SCAN, 
     int _T
 >
 struct Params {
@@ -41,9 +40,9 @@ struct Params {
     static constexpr int QB = _Q * _BLOCK_SIZE; // number of elements per block
     static constexpr int HB = H * _BLOCK_SIZE; // size of the histogram array
     static constexpr int MAXNUMERIC_ElementType = std::numeric_limits<ElTp>::max(); // the maximum value of the input array
+    static constexpr int MAXNUMERIC_UintType = std::numeric_limits<UintTp>::max(); // the maximum value of the histogram array
     using ElementType = ElTp; // the type of the input array
     using UintType = UintTp; // the type of the histogram
-    static constexpr int ELEMS_PER_THREAD_SCAN = _ELEMS_PER_THREAD_SCAN; // number of elements per thread
 
     static_assert(lgH <= 8, "LGH must be less than or equal to 8 as otherwise shared memory will overflow");
 
@@ -54,8 +53,8 @@ struct Params {
 template<typename T>
 struct is_params : std::false_type {};
 
-template<class ElTp, class UintTp, int _Q, int _lgH, int _GRID_SIZE, int _BLOCK_SIZE, int _T, int _ELEMS_PER_THREAD_SCAN>
-struct is_params<Params<ElTp, UintTp, _Q, _lgH, _GRID_SIZE, _BLOCK_SIZE, _T, _ELEMS_PER_THREAD_SCAN>> : std::true_type {};
+template<class ElTp, class UintTp, int _Q, int _lgH, int _GRID_SIZE, int _BLOCK_SIZE, int _T>
+struct is_params<Params<ElTp, UintTp, _Q, _lgH, _GRID_SIZE, _BLOCK_SIZE, _T>> : std::true_type {};
 
 
 int gpuAssert(cudaError_t code) {
@@ -81,6 +80,19 @@ void randomInit(T* data, uint64_t size, uint32_t upper) {
         data[i] = static_cast<T>(rand() % upper); // Generate random integers
 }
 
+template<class T>
+bool checkSorted(T* arr, uint64_t size) {
+    for(uint64_t i = 1; i < size; i++) {
+        if(arr[i-1] > arr[i]) {
+            printf("Array not sorted at index %llu: %u > %u\n", i, arr[i-1], arr[i]);
+            return false;
+        }
+    }
+    printf("Array is sorted!\n");
+    return true;
+}
+
+
 
 void randomInds(uint32_t* data, uint64_t size, uint32_t M) {
     for (uint64_t i = 0; i < size; i++)
@@ -102,7 +114,7 @@ bool validate(T* A, T* B, uint64_t sizeAB){
 
 
 
-template <typename T>
+template <typename T, int MAX_VAL>
 void allocateAndInitialize(
     T** h_ptr, 
     T** d_ptr, 
@@ -115,7 +127,7 @@ void allocateAndInitialize(
         
         // Initialize host memory
         if (initRnd) {
-            randomInit<T>(*h_ptr, N, 1000); // Using 1000 as default upper bound
+            randomInit<T>(*h_ptr, N, MAX_VAL); // Using 1000 as default upper bound
         } else {
             memset(*h_ptr, 0, sizeof(T) * N);
         }

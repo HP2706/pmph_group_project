@@ -89,6 +89,7 @@ void CountSort(
         d_tmp              // temporary storage
     );
     
+    cudaDeviceSynchronize();
     err = cudaGetLastError();
     if (err != cudaSuccess) {
         printf("Scan kernel failed: %s\n", cudaGetErrorString(err));
@@ -103,18 +104,25 @@ void CountSort(
         P::GRID_SIZE,
         P::H
     );
+    
+    cudaDeviceSynchronize();
     err = cudaGetLastError();
     if (err != cudaSuccess) {
         printf("Second transpose kernel failed: %s\n", cudaGetErrorString(err));
         return;
     }
 
-    // 
+
+    int shm_size = 
+        (P::QB*sizeof(typename P::ElementType) 
+        + P::H*sizeof(uint64_t)  // global histogram
+        + P::H*sizeof(uint16_t)); // local histogram
+
     RankPermuteKer<P>
     <<<
         P::GRID_SIZE, 
         P::BLOCK_SIZE,  
-        P::QB*sizeof(typename P::ElementType) // shared memory size
+        shm_size
     >>>
     (
         d_hist,
@@ -124,6 +132,9 @@ void CountSort(
         d_in,
         d_out
     );
+
+
+
     err = cudaGetLastError();
     if (err != cudaSuccess) {
         printf("Rank and permute kernel failed: %s\n", cudaGetErrorString(err));
@@ -137,6 +148,7 @@ void RadixSortKer(
     typename P::ElementType* d_out, 
     int size
 ) {
+
     typename P::UintType* d_hist;
     typename P::UintType* d_hist_transposed;
     typename P::UintType* d_hist_transposed_scanned;
@@ -173,11 +185,11 @@ void RadixSortKer(
         d_out = tmp;
 
         // zero out the histogram arrays
-        cudaMemset(d_hist, 0, sizeof(P::UintType) * P::BINS * P::GRID_SIZE);
-        cudaMemset(d_hist_transposed, 0, sizeof(P::UintType) * P::BINS * P::GRID_SIZE);
-        cudaMemset(d_hist_transposed_scanned, 0, sizeof(P::UintType) * P::BINS * P::GRID_SIZE);
-        cudaMemset(d_hist_transposed_scanned_transposed, 0, sizeof(P::UintType) * P::BINS * P::GRID_SIZE);
-        cudaMemset(d_tmp, 0, sizeof(P::UintType) * P::BLOCK_SIZE);
+        cudaMemset(d_hist, 0, sizeof(typename P::UintType) * P::H * P::GRID_SIZE);
+        cudaMemset(d_hist_transposed, 0, sizeof(typename P::UintType) * P::H * P::GRID_SIZE);
+        cudaMemset(d_hist_transposed_scanned, 0, sizeof(typename P::UintType) * P::H * P::GRID_SIZE);
+        cudaMemset(d_hist_transposed_scanned_transposed, 0, sizeof(typename P::UintType) * P::H * P::GRID_SIZE);
+        cudaMemset(d_tmp, 0, sizeof(typename P::UintType) * P::BLOCK_SIZE);
     }
 
     cudaFree(d_hist);
