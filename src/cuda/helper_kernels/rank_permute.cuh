@@ -138,27 +138,6 @@ __device__ void Partition2Way(
             }
         }
         __syncthreads();
-
-        // After computing histogram
-        if (debug_local_histo) {
-            debug_local_histo[tid + bit * P::BLOCK_SIZE] = local_histo[tid];
-        }
-
-        // After rearrangement, save register state
-        if (debug_reg_states) {
-            for (int q_idx = 0; q_idx < P::Q; q_idx++) {
-                debug_reg_states[tid * P::Q + q_idx + bit * P::BLOCK_SIZE * P::Q] = reg[q_idx];
-            }
-        }
-
-        // After shared memory updates
-        if (debug_shmem_states) {
-            for (int i = 0; i < P::BLOCK_SIZE * P::Q; i++) {
-                debug_shmem_states[i + bit * P::BLOCK_SIZE * P::Q] = shmem[i];
-            }
-        }
-
-        __syncthreads();
     }
 }
 
@@ -269,10 +248,7 @@ __global__ void RankPermuteKer(
         reg, 
         shmem, 
         local_histo,
-        bitpos,
-        debug_reg_states,
-        debug_local_histo,
-        debug_shmem_states
+        bitpos
     );
 
     /* // Add debug printing after loading registers
