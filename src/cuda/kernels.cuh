@@ -29,18 +29,15 @@ void tiled_transpose_kernel(
 }
 
 
-
-
-
 template<class P>
-void CountSort(
+__host__ void CountSort(
     typename P::ElementType* d_in, 
     typename P::ElementType* d_out, 
-    typename P::UintType* d_hist,
-    typename P::UintType* d_hist_transposed,
-    typename P::UintType* d_hist_transposed_scanned_transposed, // double transposed histogram
-    typename P::UintType* d_hist_transposed_scanned,
-    typename P::UintType* d_tmp,
+    uint16_t* d_hist,
+    uint16_t* d_hist_transposed,
+    uint64_t* d_hist_transposed_scanned_transposed,
+    uint64_t* d_hist_transposed_scanned,
+    uint64_t* d_tmp,
     uint32_t N,
     uint32_t bit_offs
 ) {
@@ -52,6 +49,7 @@ void CountSort(
     // check that P is an instance of Params
     static_assert(is_params<P>::value, "P must be an instance of Params");
 
+    // we use uint16_t for d_hist
     Histo<P><<<P::GRID_SIZE, P::BLOCK_SIZE>>>(
         d_in,
         d_hist, 
@@ -59,20 +57,20 @@ void CountSort(
         bit_offs
     );
 
+    cudaError_t err;
 
-    cudaDeviceSynchronize();
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
+    if ((err = cudaGetLastError()) != cudaSuccess) {
         printf("Histogram kernel failed: %s\n", cudaGetErrorString(err));
         return;
     }
 
-    tiled_transpose_kernel<typename P::UintType, P::T>(
+    tiled_transpose_kernel<uint16_t, P::T>(
         d_hist,
         d_hist_transposed,
         P::H,
         P::GRID_SIZE
     );
+    
     cudaDeviceSynchronize();
     err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -81,7 +79,7 @@ void CountSort(
     }
 
     // in the future use something like FusedAddCast<uint16_t, uint32_t>
-    scanInc<Add<typename P::UintType>>(
+    scanInc<FusedAddCast<uint16_t, uint64_t>>(
         P::BLOCK_SIZE, // Block size
         P::HB,          // Histogram size
         d_hist_transposed_scanned,     // output: scanned histogram
@@ -98,7 +96,7 @@ void CountSort(
 
     // we do inclusive scan here
     // transpose back to original histogram
-    tiled_transpose_kernel<typename P::UintType, P::T>(
+    tiled_transpose_kernel<uint64_t, P::T>(
         d_hist_transposed_scanned,
         d_hist_transposed_scanned_transposed,
         P::GRID_SIZE,
@@ -114,9 +112,9 @@ void CountSort(
 
 
     int shm_size = 
-        (P::QB*sizeof(typename P::ElementType) 
+        (P::Q*P::BLOCK_SIZE*sizeof(typename P::ElementType) 
         + P::H*sizeof(uint64_t)  // global histogram
-        + P::H*sizeof(uint16_t)); // local histogram
+        + P::BLOCK_SIZE*sizeof(uint16_t)); // local histogram
 
     RankPermuteKer<P>
     <<<
@@ -132,7 +130,7 @@ void CountSort(
         d_in,
         d_out
     );
-    
+   
 
     err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -142,23 +140,23 @@ void CountSort(
 }
 
 template<class P>
-void RadixSortKer(
+__host__ void RadixSortKer(
     typename P::ElementType* d_in, 
     typename P::ElementType* d_out, 
     int size
 ) {
 
-    typename P::UintType* d_hist;
-    typename P::UintType* d_hist_transposed;
-    typename P::UintType* d_hist_transposed_scanned;
-    typename P::UintType* d_hist_transposed_scanned_transposed;
-    typename P::UintType* d_tmp;
+    uint16_t* d_hist;
+    uint16_t* d_hist_transposed;
+    uint64_t* d_hist_transposed_scanned;
+    uint64_t* d_hist_transposed_scanned_transposed;
+    uint64_t* d_tmp;
 
-    cudaMalloc((void**) &d_hist, sizeof(typename P::UintType) * P::HB);
-    cudaMalloc((void**) &d_hist_transposed, sizeof(typename P::UintType) * P::HB);
-    cudaMalloc((void**) &d_hist_transposed_scanned, sizeof(typename P::UintType) * P::HB);
-    cudaMalloc((void**) &d_hist_transposed_scanned_transposed, sizeof(typename P::UintType) * P::HB);
-    cudaMalloc((void**) &d_tmp, sizeof(typename P::UintType) * P::BLOCK_SIZE);
+    cudaMalloc((void**) &d_hist, sizeof(uint16_t) * P::HB);
+    cudaMalloc((void**) &d_hist_transposed, sizeof(uint16_t) * P::HB);
+    cudaMalloc((void**) &d_hist_transposed_scanned, sizeof(uint64_t) * P::HB);
+    cudaMalloc((void**) &d_hist_transposed_scanned_transposed, sizeof(uint64_t) * P::HB);
+    cudaMalloc((void**) &d_tmp, sizeof(uint64_t) * P::BLOCK_SIZE);
     
 
     // check divisibility by lgH
@@ -191,11 +189,11 @@ void RadixSortKer(
         d_out = tmp;
 
         // zero out the histogram arrays
-        cudaMemset(d_hist, 0, sizeof(typename P::UintType) * P::H * P::GRID_SIZE);
-        cudaMemset(d_hist_transposed, 0, sizeof(typename P::UintType) * P::H * P::GRID_SIZE);
-        cudaMemset(d_hist_transposed_scanned, 0, sizeof(typename P::UintType) * P::H * P::GRID_SIZE);
-        cudaMemset(d_hist_transposed_scanned_transposed, 0, sizeof(typename P::UintType) * P::H * P::GRID_SIZE);
-        cudaMemset(d_tmp, 0, sizeof(typename P::UintType) * P::BLOCK_SIZE);
+        cudaMemset(d_hist, 0, sizeof(uint16_t) * P::H * P::GRID_SIZE);
+        cudaMemset(d_hist_transposed, 0, sizeof(uint16_t) * P::H * P::GRID_SIZE);
+        cudaMemset(d_hist_transposed_scanned, 0, sizeof(uint64_t) * P::H * P::GRID_SIZE);
+        cudaMemset(d_hist_transposed_scanned_transposed, 0, sizeof(uint64_t) * P::H * P::GRID_SIZE);
+        cudaMemset(d_tmp, 0, sizeof(uint64_t) * P::BLOCK_SIZE);
     }
 
     cudaFree(d_hist);

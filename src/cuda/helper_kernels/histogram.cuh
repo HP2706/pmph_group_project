@@ -15,7 +15,7 @@ template<class P>
 __global__ void
 Histo(
     typename P::ElementType* inp_vals,        // Input values
-    typename P::UintType* hist,                 // array of length num_bins * gridDim.x
+    uint16_t* hist,                 // array of length num_bins * gridDim.x
     const uint32_t N,                         // Total number of elements
     const uint32_t bit_pos                    // Starting bit position to examine
 ) {

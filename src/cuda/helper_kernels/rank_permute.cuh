@@ -146,8 +146,8 @@ __device__ void WriteOutput(
     typename P::ElementType reg[P::Q],
     uint64_t* global_histo,
     uint16_t* local_histo,
-    typename P::UintType* d_hist,
-    typename P::UintType* d_hist_transposed_scanned_transposed,
+    uint16_t* d_hist,
+    uint64_t* d_hist_transposed_scanned_transposed,
     uint32_t bitpos,
     uint32_t N,
     typename P::ElementType* arr_out
@@ -188,8 +188,8 @@ __device__ void WriteOutput(
 template<class P>
 __launch_bounds__(P::BLOCK_SIZE, 1024/P::BLOCK_SIZE)
 __global__ void RankPermuteKer(
-    typename P::UintType* d_hist,
-    typename P::UintType* d_hist_transposed_scanned_transposed, // as we are using scan we have higher integer values and thus need to use uint64_t
+    uint16_t* d_hist,
+    uint64_t* d_hist_transposed_scanned_transposed, // as we are using scan we have higher integer values and thus need to use uint64_t
     uint32_t bitpos, 
     uint32_t N,
     typename P::ElementType* arr_inp, // this is either uint8_t, uint16_t or uint32_t or uint64_t
