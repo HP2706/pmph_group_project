@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <math.h>
 #include <cstdint>
+#include <fstream>
 
 #include "../constants.cuh"
 #include "../helper.h"
@@ -30,8 +31,10 @@ __host__ void test_radix_sort_ker(
     typename P::ElementType* cub_d_out;
     
     typename P::ElementType* d_in;
+    typename P::ElementType* h_in;
     typename P::ElementType* d_out;
     typename P::ElementType* h_out;
+
 
 
     allocateAndInitialize<typename P::ElementType, P::MAXNUMERIC_ElementType>(
@@ -58,9 +61,17 @@ __host__ void test_radix_sort_ker(
 
 
     cudaMalloc((typename P::ElementType**) &d_in, input_size * sizeof(typename P::ElementType));
-    cudaMemcpy(d_in, cub_d_in, input_size * sizeof(typename P::ElementType), cudaMemcpyDeviceToDevice);
+    h_in = (typename P::ElementType*) malloc(input_size * sizeof(typename P::ElementType));
 
+    // copy cub_h_in to h_in
+    memcpy(h_in, cub_h_in, input_size * sizeof(typename P::ElementType));
 
+    // copy h_in to d_in
+    cudaMemcpy(d_in, h_in, input_size * sizeof(typename P::ElementType), cudaMemcpyHostToDevice);
+
+    // check that thecub and radix sort inputs are the same
+    printf("checking that cub and radix sort inputs are the same\n");
+    assert(validate(cub_h_in, h_in, input_size));
 
 
     CUBSortKernel<
@@ -100,14 +111,9 @@ __host__ void test_radix_sort_ker(
         return;
     }
 
-    // Add debug prints for input data
-    printf("\nFirst 20 input elements:\n");
-    for (uint32_t i = 0; i < 20 && i < input_size; i++) {
-        printf("cub_h_in[%d]: %d\n", i, cub_h_in[i]);
-    }
-
     cudaMemcpy(h_out, d_out, input_size * sizeof(typename P::ElementType), cudaMemcpyDeviceToHost);
 
+    #if 0
     // Find and print the exact location where sorting fails
     for (uint32_t i = 1; i < input_size; i++) {
         if (h_out[i] < h_out[i-1]) {
@@ -132,30 +138,35 @@ __host__ void test_radix_sort_ker(
     } else {
         printf("RadixSortKer is sorted\n");
     }
+    #endif
 
-    // Find and print the exact location where CUBSort fails
-    for (uint32_t i = 1; i < input_size; i++) {
-        if (cub_h_out[i] < cub_h_out[i-1]) {
-            printf("\nCUBSort failure at index %d: %d > %d\n", 
-                i, cub_h_out[i-1], cub_h_out[i]);
-            // Print surrounding elements for context
-            printf("Elements around failure point:\n");
-            for (int j = max(0, (int)i-5); j < min(input_size, i+5); j++) {
-                printf("cub_h_out[%d]: %d\n", j, cub_h_out[j]);
-            }
-            break;
+    // if file already exists, delete it
+    std::remove("radix_sort_output.txt");
+
+    // Write RadixSort output to file
+    std::ofstream radix_file("radix_sort_output.txt");
+    if (radix_file.is_open()) {
+        for (uint32_t i = 0; i < input_size; i++) {
+            radix_file << h_out[i] << "\n";
         }
+        radix_file.close();
+    } else {
+        printf("Error: Could not open radix_sort_output.txt\n");
     }
 
-    if (!checkSorted(cub_h_out, input_size)) {
-        printf("CUBSortKernel is not sorted\n");
-        // print top 100 elements
-        printf("top 100 elements:\n");
-        for (uint32_t i = 0; i < 100; i++) {
-            printf("cub_h_out[%d]: %d\n", i, cub_h_out[i]);
+    printf("writing cub sort output to file\n");
+
+    std::remove("cub_sort_output.txt");
+
+    // Write CUBSort output to file
+    std::ofstream cub_file("cub_sort_output.txt");
+    if (cub_file.is_open()) {
+        for (uint32_t i = 0; i < input_size; i++) {
+            cub_file << cub_h_out[i] << "\n";
         }
+        cub_file.close();
     } else {
-        printf("CUBSortKernel is sorted\n");
+        printf("Error: Could not open cub_sort_output.txt\n");
     }
 
     printf("checking cub matches radix\n");

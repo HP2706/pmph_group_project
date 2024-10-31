@@ -5,7 +5,7 @@
 #include "helper_kernels/utils.cuh"
 #include "helper_kernels/rank_permute.cuh"
 #include "helper.h"
-
+#include <cassert>
 
 template<class T, int TILE_SIZE>
 void tiled_transpose_kernel(
@@ -42,7 +42,7 @@ void CountSort(
     typename P::UintType* d_hist_transposed_scanned,
     typename P::UintType* d_tmp,
     uint32_t N,
-    uint32_t bit_pos
+    uint32_t bit_offs
 ) {
 
     // TODO
@@ -56,7 +56,7 @@ void CountSort(
         d_in,
         d_hist, 
         N, 
-        bit_pos
+        bit_offs
     );
 
 
@@ -127,13 +127,12 @@ void CountSort(
     (
         d_hist,
         d_hist_transposed_scanned_transposed,
-        bit_pos,
+        bit_offs,
         N,
         d_in,
         d_out
     );
-
-
+    
 
     err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -162,8 +161,15 @@ void RadixSortKer(
     cudaMalloc((void**) &d_tmp, sizeof(typename P::UintType) * P::BLOCK_SIZE);
     
 
-    int bit_pos = 0;
-    while (bit_pos < P::lgH) {
+    // check divisibility by lgH
+    assert((sizeof(typename P::ElementType)*8) % P::lgH == 0);
+    
+    int n_iter = (sizeof(typename P::ElementType)*8) / P::lgH;
+
+    int bit_offs = 0;
+    printf("n_iter: %d\n", n_iter);
+
+    for (int i = 0; i < n_iter; i++) {
         CountSort<P>(
             d_in, 
             d_out, 
@@ -173,11 +179,11 @@ void RadixSortKer(
             d_hist_transposed_scanned, 
             d_tmp, 
             size, 
-            bit_pos
+            bit_offs
         );
 
         // increment the bit position
-        bit_pos += P::lgH;
+        bit_offs += P::lgH;
 
         // swap the input and output arrays
         typename P::ElementType* tmp = d_in;
