@@ -28,27 +28,27 @@ __global__ void testGlbToRegKernel(
     uint32_t bid = blockIdx.x;
     using uint = typename P::ElementType;
 
-    // Allocate shared memory
     extern __shared__ uint64_t sh_mem_uint64[];
     uint* shmem = (uint*) sh_mem_uint64;
 
-    // Allocate local registers (Q elements per thread)
     uint reg[P::Q];
 
-    // Call GlbToReg function
     GlbToReg<uint, P::Q, P::BLOCK_SIZE, P::MAXNUMERIC_ElementType>(N, shmem, arr_in, reg);
 
     __syncthreads();
-
-    // 4. Write from shared memory back to global output array
+    
     const uint32_t QB = P::BLOCK_SIZE * P::Q;
-    const uint64_t glb_offs = bid * QB + tid * P::Q;
+    const uint64_t glb_offs = bid * QB;
+    
+    for (int i = 0; i < P::Q; i++) 
+    {
+        uint64_t expected_idx = glb_offs + tid * P::Q + i;
+        uint expected_value = (expected_idx < N) ? arr_in[expected_idx] : P::MAXNUMERIC_ElementType;
 
-    for (int i = 0; i < P::Q; i++) {
-        if (glb_offs + i < N) {
-            arr_out[glb_offs + i] = shmem[P::Q * tid + i];
-        }
+        //Assert or print mismatches if any
+        assert(reg[i] == expected_value);  // Optionally, use printf for non-assert debugging
     }
+    __syncthreads();
 }
 
 template<typename P>
@@ -98,11 +98,6 @@ __host__ void test_glb_to_reg_ker(
         true
     );
 
-    for (int i = 0; i < N; ++i)
-    {
-        printf("Num: %d\n", h_in[i]);
-    }
-
     allocateAndInitialize<typename P::ElementType, P::MAXNUMERIC_ElementType>(
         &h_out, 
         &d_out, 
@@ -120,20 +115,25 @@ __host__ void test_glb_to_reg_ker(
         d_out,
         N
     );
+    cudaDeviceSynchronize();
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) 
     {
         printf("Test kernel failed: %s\n", cudaGetErrorString(err));
         return;
     }
+    else
+    {
+        printf("GlbToRegKernel passed!\n");
+    }
 
     //Copy result from device to host
     cudaMemcpy(h_out, d_out, N * sizeof(ElementType), cudaMemcpyDeviceToHost);
 
-    for (int i = 0; i < N; ++i)
+    /*for (int i = 0; i < N; ++i)
     {
         printf("Expected vs what I got: %d vs %d\n", h_in[i], h_out[i]);
-    }
+    }*/
 
 /*    verifyGlbToReg<P>(h_in, h_out, N);
 
