@@ -66,8 +66,8 @@ void test_histo_ker(uint32_t input_size) {
     uint32_t hist_len = P::H * P::GRID_SIZE;
     cpu_hist = (typename P::UintType*)calloc(hist_len, sizeof(typename P::UintType));
     
-    allocateAndInitialize<typename P::ElementType>(&h_in, &d_in, input_size, true);
-    allocateAndInitialize<typename P::UintType>(&h_hist, &d_hist, hist_len, false);
+    allocateAndInitialize<typename P::ElementType, P::MAXNUMERIC_ElementType>(&h_in, &d_in, input_size, true);
+    allocateAndInitialize<typename P::UintType, P::MAXNUMERIC_UintType>(&h_hist, &d_hist, hist_len, false);
 
     uint32_t bit_pos = 0;
     HistoCPU<P>(
@@ -79,7 +79,7 @@ void test_histo_ker(uint32_t input_size) {
 
     printf("CPU Histogram done\n");
 
-    Histo<P><<<P::GRID_SIZE, P::BLOCK_SIZE>>>(
+    Histo<P, typename P::UintType><<<P::GRID_SIZE, P::BLOCK_SIZE>>>(
         d_in, 
         d_hist, 
         input_size, 

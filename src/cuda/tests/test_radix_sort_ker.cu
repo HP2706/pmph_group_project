@@ -74,11 +74,7 @@ __host__ void test_radix_sort_ker(
     assert(validate(cub_h_in, h_in, input_size));
 
 
-    CUBSortKernel<
-        typename P::ElementType, 
-        P::BLOCK_SIZE, 
-        P::Q
-    ><<<P::GRID_SIZE, P::BLOCK_SIZE>>>
+    deviceRadixSortKernel<typename P::ElementType>
     (
         cub_d_in, 
         cub_d_out, 
@@ -168,6 +164,9 @@ __host__ void test_radix_sort_ker(
     } else {
         printf("Error: Could not open cub_sort_output.txt\n");
     }
+
+    printf("largest ElementType: %u\n", P::MAXNUMERIC_ElementType);
+    printf("largest UintType: %u\n", P::MAXNUMERIC_UintType);
 
     printf("checking cub matches radix\n");
     assert(validate(cub_h_out, h_out, input_size));

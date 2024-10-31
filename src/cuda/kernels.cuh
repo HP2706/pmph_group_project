@@ -50,7 +50,7 @@ __host__ void CountSort(
     static_assert(is_params<P>::value, "P must be an instance of Params");
 
     // we use uint16_t for d_hist
-    Histo<P><<<P::GRID_SIZE, P::BLOCK_SIZE>>>(
+    Histo<P, uint16_t><<<P::GRID_SIZE, P::BLOCK_SIZE>>>(
         d_in,
         d_hist, 
         N, 

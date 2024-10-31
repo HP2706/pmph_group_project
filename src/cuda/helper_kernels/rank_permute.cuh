@@ -5,6 +5,9 @@
 #include "../helper.h"
 #include "utils.cuh"
 #include <limits>
+#include "twoWayPartition.cuh"
+
+
 /// we use UintType as we are manipulating 
 /// the histograms not the input array elements
 template<class T, int Q, int BLOCK_SIZE, int MAXNUMERIC>
@@ -40,106 +43,6 @@ __device__ void GlbToReg(
 }
 
 
-
-template<class P>
-__device__ void Partition2Way(
-    typename P::ElementType reg[P::Q], // Q elements per thread in registers
-    typename P::ElementType* shmem, // shared memory
-    uint16_t* local_histo, // local histogram in shared memory
-    uint32_t bitpos // position of the bit in the element
-){
-    
-    uint32_t tid = threadIdx.x;
-    uint32_t bid = blockIdx.x;
-    uint16_t thread_offset = tid * P::Q;
-
-    for (int bit = 0; bit < P::lgH; bit++) {
-
-        // Phase 1: Sequential reduction of Q elements
-        // we can use uint16_t because the maximum number of elements is 1 << lgH = 2^lgH = 2^8 = 256
-        uint16_t accum = 0;
-        for (int q_idx = 0; q_idx < P::Q; q_idx++) {
-            // we shift by bit to get the bit value and we mask it with 1 to get the boolean value
-            // we first shift by the bitpos offset and then by the current bit from 0 to lgH-1
-            uint16_t res = isBitUnset<uint>(bitpos + bit, reg[q_idx]);
-            accum += res;
-        }
-        
-        // the thread local count is stored in the local histogram
-        local_histo[tid] = accum;
-
-        // we scan the local histogram
-        uint16_t res = scanIncBlock<Add<uint16_t>>(local_histo, tid);
-        __syncthreads();
-        local_histo[tid] = res;
-        __syncthreads();
-
-        // we get the prefix of the thread
-        // TODO: check if this is correct
-        int16_t prefix_thread = local_histo[P::BLOCK_SIZE-1];
-
-        // we reset the accumumulator
-        // or we take the previous value
-        if (tid == 0) {
-            accum = 0; 
-        } else {
-            accum = local_histo[tid-1];
-        }
-        __syncthreads();
-
-        /* if (tid == 0 && bid == 0) {
-            // print the local histogram
-            printf("Local histogram: ");
-            for (int i = 0; i < P::BLOCK_SIZE; i++) {
-                printf("%d ", local_histo[i]);
-            }
-            printf("\n");
-
-            printf("Prefix thread: %d\n", prefix_thread);
-            printf("Accum: %d\n", accum);
-        } 
-        __syncthreads(); */
-
-        // we rearrange the elements based on the bit value
-        for (int q_idx = 0; q_idx < P::Q; q_idx++) {
-            uint val = reg[q_idx];
-            uint16_t bit_val = (uint16_t) isBitUnset<uint>(bitpos + bit, val);
-            
-            accum += bit_val;
-
-            int newpos;
-            if (bit_val == uint(1)) {
-                newpos = accum -1 ;
-            } else {
-                // we add the prefix of the thread to the local histogram position
-                // and we subtract the accumumulator to get the new position
-                // we offset by threadIdx.x*Q 
-                newpos = prefix_thread + thread_offset + q_idx - accum;
-            }
-            // we write the element to the new position
-            shmem[newpos] = val;
-        }
-        // wait for all threads to have written their elements
-        __syncthreads();
-
-        if (bit < P::lgH-1) {
-            // if we are not at the last bit
-            // we copy the elements from the shared memory to the registers
-            // in the new position
-            for (int q_idx = 0; q_idx < P::Q; q_idx++) {
-                reg[q_idx] = shmem[thread_offset + q_idx];
-            }
-        } else {
-            // if we are at the last bit
-            for (int q_idx = 0; q_idx < P::Q; q_idx++) {
-                // we iterate with a stride of BLOCK_SIZE
-                uint local_pos = q_idx*P::BLOCK_SIZE + tid;
-                reg[q_idx] = shmem[local_pos];
-            }
-        }
-        __syncthreads();
-    }
-}
 
 template<class P>
 __device__ void WriteOutput(
@@ -185,6 +88,9 @@ __device__ void WriteOutput(
     }
 }
 
+
+
+
 template<class P>
 __launch_bounds__(P::BLOCK_SIZE, 1024/P::BLOCK_SIZE)
 __global__ void RankPermuteKer(
@@ -202,19 +108,20 @@ __global__ void RankPermuteKer(
     uint32_t bid = blockIdx.x;
     using uint = typename P::ElementType;
 
-    // we allocate shared memory of size
-    // note as we use extern __shared__ we declare shared memory in the launch call
+    // Calculate shared memory layout:
+    // 1. Element buffer: BLOCK_SIZE * Q * sizeof(ElementType)
+    // 2. Global histogram: H * sizeof(uint64_t)
+    // 3. Local histogram: BLOCK_SIZE * sizeof(uint16_t)
+    
     extern __shared__ uint64_t sh_mem_uint64[];
+    
+    // Ensure proper alignment for all types
+    // the interval [0, QB] is reserved for the element buffer
     uint* shmem = (uint*) sh_mem_uint64;
-
-    // we use uint64_t for the global histogram
-    // to avoid overflows
-    uint64_t* global_histo = (uint64_t*) sh_mem_uint64;
-
-    // the local histogram can work with uint16_t 
-    // as local position are much smaller
-    // in this way we save memory bandwidth 
-    uint16_t* local_histo = (uint16_t*) (global_histo + P::H);
+    // the interval [QB, QB+H] is reserved for the global histogram
+    uint64_t* global_histo = (uint64_t*)(shmem + P::H);
+    // the interval [QB+H, QB+H+BLOCK_SIZE] is reserved for the local histogram
+    uint16_t* local_histo = (uint16_t*)(global_histo + P::BLOCK_SIZE);
 
     // we allocate the registers
     // Q elements per thread
@@ -227,15 +134,7 @@ __global__ void RankPermuteKer(
         P::MAXNUMERIC_ElementType
     >(N, shmem, arr_inp, reg);
 
-
-    /* // Add debug printing after loading registers
-    if (threadIdx.x == 0 && blockIdx.x == 0) {
-        printf("RANKPERMUTE - Initial register values for thread %d:\n", threadIdx.x);
-        for (int q = 0; q < P::Q; q++) {
-            printf("reg[%d] = %u\n", q, reg[q]);
-        }
-    }
-    __syncthreads(); */
+    __syncthreads();
 
     /* Step 2: Two-way partitioning loop
      * For each bit position (lgH bits total):
@@ -244,21 +143,15 @@ __global__ void RankPermuteKer(
      * 3. Each thread applies prefix to rearrange its elements
     */
 
-    Partition2Way<P>(
+   
+   
+    TwoWayPartition<P>(
         reg, 
         shmem, 
         local_histo,
         bitpos
     );
 
-    /* // Add debug printing after loading registers
-    if (threadIdx.x == 0 && blockIdx.x == 0) {
-        printf("RANKPERMUTE - register values for thread %d after partitioning:\n", threadIdx.x);
-        for (int q = 0; q < P::Q; q++) {
-            printf("reg[%d] = %u\n", q, reg[q]);
-        }
-    }
-    __syncthreads(); */
 
 
     /* Step 3: Final output generation
@@ -279,5 +172,9 @@ __global__ void RankPermuteKer(
         arr_out
     );
 }
+
+
+
+
 
 #endif // RANK_PERMUTE_CUH

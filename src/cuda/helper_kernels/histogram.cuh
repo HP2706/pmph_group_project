@@ -11,11 +11,11 @@
 
 // we dont expect to process more than 8 bits for the radix sort
 
-template<class P>  
+template<class P, class T>  
 __global__ void
 Histo(
     typename P::ElementType* inp_vals,        // Input values
-    uint16_t* hist,                 // array of length num_bins * gridDim.x
+    T* hist,                 // array of length num_bins * gridDim.x
     const uint32_t N,                         // Total number of elements
     const uint32_t bit_pos                    // Starting bit position to examine
 ) {
@@ -26,7 +26,8 @@ Histo(
     const uint32_t bid = blockIdx.x;
     
     // allocate shared memory for local histogram
-    __shared__ typename P::UintType local_hist[P::H]; 
+    __shared__ uint32_t local_hist[P::H]; 
+    // initialize the local histogram to 0
     if (tid < P::H) {
         local_hist[tid] = 0;
     }
