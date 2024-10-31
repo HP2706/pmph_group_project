@@ -11,6 +11,7 @@
 #include "tests/test_radix_sort_ker.cu"
 #include "tests/test_rank_permute.cu"
 #include "tests/test_histo_ker.cu"
+#include "tests/test_glb_to_reg.cu"
 #include <cuda_runtime.h>
 
 int main() {
@@ -18,7 +19,7 @@ int main() {
 
     // setup params
 
-    const uint32_t input_size = 100000;
+    const uint32_t input_size = 1000;
     const uint32_t Q = 22; // 22
     const uint32_t lgH = 8;
     const uint32_t BLOCK_SIZE = 256;
@@ -41,7 +42,8 @@ int main() {
     //test_verify_transpose<P>(input_size);
     //test_call_rank_permute_ker<P>(input_size);
 
-    test_radix_sort_ker<P>(input_size);
+    //test_radix_sort_ker<P>(input_size);
+    test_glb_to_reg_ker<P>(input_size);
     //test_count_sort<P>(input_size);
     //printf("CountSort done\n");
 
