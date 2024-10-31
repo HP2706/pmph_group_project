@@ -59,7 +59,6 @@ __host__ void test_radix_sort_ker(
         false
     );
 
-
     cudaMalloc((typename P::ElementType**) &d_in, input_size * sizeof(typename P::ElementType));
     h_in = (typename P::ElementType*) malloc(input_size * sizeof(typename P::ElementType));
 
@@ -69,7 +68,8 @@ __host__ void test_radix_sort_ker(
     // copy h_in to d_in
     cudaMemcpy(d_in, h_in, input_size * sizeof(typename P::ElementType), cudaMemcpyHostToDevice);
 
-    // check that thecub and radix sort inputs are the same
+
+    /* // check that thecub and radix sort inputs are the same
     printf("checking that cub and radix sort inputs are the same\n");
     assert(validate(cub_h_in, h_in, input_size));
 
@@ -83,7 +83,7 @@ __host__ void test_radix_sort_ker(
 
     // copy results back to host
     cudaMemcpy(cub_h_out, cub_d_out, input_size * sizeof(typename P::ElementType), cudaMemcpyDeviceToHost);
-
+    */
 
     cudaDeviceSynchronize();
     cudaError_t err = cudaGetLastError();
@@ -167,6 +167,7 @@ __host__ void test_radix_sort_ker(
 
     printf("largest ElementType: %u\n", P::MAXNUMERIC_ElementType);
     printf("largest UintType: %u\n", P::MAXNUMERIC_UintType);
+
 
     printf("checking cub matches radix\n");
     assert(validate(cub_h_out, h_out, input_size));

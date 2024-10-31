@@ -22,14 +22,18 @@ int main() {
 
     // setup params
 
-    const uint32_t input_size = 1000;
-    const uint32_t Q = 22; // 22
+    const uint32_t input_size = 100;
+    const uint32_t Q = 4; // 22
     const uint32_t lgH = 8;
-    const uint32_t BLOCK_SIZE = 256;
+    const uint32_t BLOCK_SIZE = 32;
     const uint32_t T = 32;
     const uint32_t GRID_SIZE = (input_size + (BLOCK_SIZE * Q - 1)) / (BLOCK_SIZE * Q);
 
+    printf("total number of threads used: %u\n", GRID_SIZE * BLOCK_SIZE);
+    printf("QB: %u\n", Q * BLOCK_SIZE);
     printf("grid size : %u\n", GRID_SIZE);
+
+
 
     using P = Params<
         uint32_t, 

@@ -96,7 +96,7 @@ __launch_bounds__(P::BLOCK_SIZE, 1024/P::BLOCK_SIZE)
 __global__ void RankPermuteKer(
     uint16_t* d_hist,
     uint64_t* d_hist_transposed_scanned_transposed, // as we are using scan we have higher integer values and thus need to use uint64_t
-    uint32_t bitpos, 
+    uint32_t bit_offs, 
     uint32_t N,
     typename P::ElementType* arr_inp, // this is either uint8_t, uint16_t or uint32_t or uint64_t
     typename P::ElementType* arr_out
@@ -122,7 +122,7 @@ __global__ void RankPermuteKer(
     uint64_t* global_histo = (uint64_t*)(shmem + P::H);
     // the interval [QB+H, QB+H+BLOCK_SIZE] is reserved for the local histogram
     uint16_t* local_histo = (uint16_t*)(global_histo + P::BLOCK_SIZE);
-
+    
     // we allocate the registers
     // Q elements per thread
     uint reg[P::Q];
@@ -143,16 +143,24 @@ __global__ void RankPermuteKer(
      * 3. Each thread applies prefix to rearrange its elements
     */
 
-   
-   
     TwoWayPartition<P>(
         reg, 
         shmem, 
         local_histo,
-        bitpos
+        bit_offs,
+        N
     );
+    __syncthreads();
 
-
+    if (tid == 0) {
+        printf("debugging after two way partition\n bit_offs: %d\n", bit_offs + P::lgH - 1);
+        debugPartitionCorrectness<P>(
+            shmem, 
+            min(N, P::BLOCK_SIZE * P::Q),
+            bit_offs + P::lgH - 1
+        );
+    }
+    __syncthreads();
 
     /* Step 3: Final output generation
      * 1. Copy original and scanned histograms from global to shared memory
@@ -167,11 +175,25 @@ __global__ void RankPermuteKer(
         local_histo,
         d_hist,
         d_hist_transposed_scanned_transposed,
-        bitpos,
+        bit_offs,
         N,
         arr_out
     );
+
+    if (tid == 0) {
+        printf("debugging after write output\n bit_offs: %d\n", bit_offs + P::lgH - 1);
+        debugPartitionCorrectness<P>(
+            arr_out, 
+            min(N, P::BLOCK_SIZE * P::Q),
+            bit_offs + P::lgH - 1
+        );
+    }
+    __syncthreads();
+
 }
+
+
+
 
 
 

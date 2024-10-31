@@ -131,7 +131,6 @@ __host__ void CountSort(
         d_out
     );
    
-
     err = cudaGetLastError();
     if (err != cudaSuccess) {
         printf("Rank and permute kernel failed: %s\n", cudaGetErrorString(err));
@@ -158,7 +157,10 @@ __host__ void RadixSortKer(
     cudaMalloc((void**) &d_hist_transposed_scanned_transposed, sizeof(uint64_t) * P::HB);
     cudaMalloc((void**) &d_tmp, sizeof(uint64_t) * P::BLOCK_SIZE);
     
-
+    // STRICTLY FOR DEBUGGING
+    typename P::ElementType* h_out_debug;
+    h_out_debug = (typename P::ElementType*) malloc(sizeof(typename P::ElementType) * size);
+    
     // check divisibility by lgH
     assert((sizeof(typename P::ElementType)*8) % P::lgH == 0);
     
@@ -166,6 +168,10 @@ __host__ void RadixSortKer(
 
     int bit_offs = 0;
     printf("n_iter: %d\n", n_iter);
+
+    //remove file if it exists
+    remove("output_file.txt");
+    FILE* output_file = fopen("output_file.txt", "w");
 
     for (int i = 0; i < n_iter; i++) {
         CountSort<P>(
@@ -183,13 +189,20 @@ __host__ void RadixSortKer(
         // increment the bit position
         bit_offs += P::lgH;
 
-        // we should verify that for the current bit position, the output array is sorted
-        
+        //printf("checking at bit_offs: %d\n", bit_offs);
+        cudaMemcpy(h_out_debug, d_out, sizeof(typename P::ElementType) * size, cudaMemcpyDeviceToHost);
 
-        // swap the input and output arrays
-        typename P::ElementType* tmp = d_in;
-        d_in = d_out;
-        d_out = tmp;
+        // we should verify that for the current bit position, the output array is sorted
+        checkBitPatternBreaks<typename P::ElementType>(h_out_debug, size, bit_offs, output_file);
+
+        fprintf(output_file, "bit_offs: %d done\n", bit_offs);
+
+        
+        if (i < n_iter - 1) {  // Only swap for all but the last iteration
+            typename P::ElementType* tmp = d_in;
+            d_in = d_out;
+            d_out = tmp;
+        }
 
         // zero out the histogram arrays
         cudaMemset(d_hist, 0, sizeof(uint16_t) * P::H * P::GRID_SIZE);
@@ -199,6 +212,10 @@ __host__ void RadixSortKer(
         cudaMemset(d_tmp, 0, sizeof(uint64_t) * P::BLOCK_SIZE);
 
     }
+
+    fclose(output_file);
+    free(h_out_debug);
+
 
     cudaFree(d_hist);
     cudaFree(d_hist_transposed);

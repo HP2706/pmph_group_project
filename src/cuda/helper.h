@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef HELPER
 #define HELPER
 
@@ -8,6 +10,7 @@
 #include <cstdint>
 #include <time.h>
 #include <limits>
+#include "helper_kernels/utils.cuh"
 #if 0
 typedef int        int32_t;
 typedef long long  int64_t;
@@ -19,13 +22,24 @@ uint32_t HWD;
 uint32_t BLOCK_SZ;
 
 
+
+
 template<typename T>
-__device__ __host__ void print_binary_repr(T num) {
-    printf("%u (", num);
-    for (int b = sizeof(T) * 8 - 1; b >= 0; b--) {
-        printf("%d", (num >> b) & 1);
+__device__ __host__ void print_binary_repr(T num, FILE* output_file = nullptr) {
+    
+    if (output_file) {
+        fprintf(output_file, "%u (", num);
+        for (int b = sizeof(T) * 8 - 1; b >= 0; b--) {
+            fprintf(output_file, "%d", (num >> b) & 1);
+        }
+        fprintf(output_file, ")\n");
+    } else {
+        printf("%u (", num);
+        for (int b = sizeof(T) * 8 - 1; b >= 0; b--) {
+            printf("%d", (num >> b) & 1);
+        }
+        printf(")\n");
     }
-    printf(")\n");
 }
 
 
@@ -189,37 +203,94 @@ void checkAllZeros(T* ptr, uint32_t size) {
 }
 
 
-template <typename UInt, int BLOCK_SIZE>
-void PrepareMemory(
-    UInt** h_in, 
-    UInt** d_in, 
-    uint32_t** d_hist, 
-    uint32_t** h_hist,
-    uint32_t num_bins,
-    uint32_t SIZE,
-    uint32_t hist_size
-) {
-
-    *h_in = (UInt*) malloc(sizeof(UInt) * SIZE);
-    *h_hist = (uint32_t*) malloc(sizeof(uint32_t) * hist_size);
-
-    // initialize h_hist to 0
-    for (int i = 0; i < hist_size; i++) {
-        (*h_hist)[i] = 0;
-    }
-
-
-    // 2. allocate device memory
-    cudaMalloc((UInt**) d_in, sizeof(UInt) * SIZE); // Update the cudaMalloc call
-    cudaMalloc((uint32_t**) d_hist, sizeof(uint32_t) * hist_size);
-
-    // 3. initialize host memory
-    randomInit<UInt>(*h_in, SIZE, num_bins);
-
-    // 4. copy host memory to device
-    cudaMemcpy(*d_in, *h_in, sizeof(UInt) * SIZE, cudaMemcpyHostToDevice);
-    cudaMemcpy(*d_hist, *h_hist, sizeof(uint32_t) * hist_size, cudaMemcpyHostToDevice);
+template<typename T>
+__inline__ __device__ __host__ T getBitAtPosition(T val, uint32_t bitpos) {
+    return (val >> bitpos) & 1;
 }
 
+
+
+
+template<class P>
+__device__ void debugPartitionCorrectness(
+    typename P::ElementType* arr,
+    uint32_t N,
+    uint32_t bitpos // bit_offs + bit
+) {
+    printf("After (examining bit position %d) for block %d:\n", bitpos, blockIdx.x);
+    
+    // Find break point
+    int break_point = -1;
+    for (int i = 0; i < N; i++) {
+        bool is_unset = isBitUnset<typename P::ElementType>(bitpos, arr[i]);
+        printf("bit: %d, idx: %d, is_unset = %d\n", bitpos, i, is_unset);
+        
+        if (break_point == -1 && !is_unset) {  // Found first 1
+            break_point = i;
+            printf("Break point (0->1) found at index: %d\n", break_point);
+        } else if (break_point != -1 && is_unset) {  // Check violations after break point
+            printf("VIOLATION at idx %d: ", i);
+            print_binary_repr<typename P::ElementType>(arr[i]);
+            printf(" (expected 1, got 0)\n");
+            asm("trap;"); // throw an exception
+        }
+    }
+    printf("\n");
+    printf("done\n");
+}
+
+
+// check if the bit pattern breaks at the given bit position
+template<typename T>
+__device__ __host__ void checkBitPatternBreaks(
+    T* arr, 
+    uint32_t N, 
+    uint32_t bitpos,
+    FILE* output_file = nullptr
+) {
+    int break_point = -1;
+    
+    // Find first transition from 0 to 1
+    for (uint32_t i = 0; i < N; i++) {
+        if (output_file) {
+            fprintf(output_file, "getBitAtPosition(arr[%u], %u) = %u\n", i, bitpos, getBitAtPosition(arr[i], bitpos));
+        } else {
+            printf("getBitAtPosition(arr[%u], %u) = %u\n", i, bitpos, getBitAtPosition(arr[i], bitpos));
+        }
+    
+        if (getBitAtPosition(arr[i], bitpos) == 1) {
+            if (output_file) {
+                fprintf(output_file, "Break point (0->1) at index: %d\n", i);
+            } else {
+                printf("Break point (0->1) at index: %d\n", i);
+            }
+            break_point = i;
+            break;
+        }
+    }
+    
+    
+    // Check for violations (any 0s after seeing a 1)
+    if (break_point != -1) {
+        for (uint32_t i = break_point + 1; i < N; i++) {
+            if (output_file) {
+                fprintf(output_file, "getBitAtPosition(arr[%u], %u) = %u\n", i, bitpos, getBitAtPosition(arr[i], bitpos));
+            } else {
+                printf("getBitAtPosition(arr[%u], %u) = %u\n", i, bitpos, getBitAtPosition(arr[i], bitpos));
+            }
+            /* if (getBitAtPosition(arr[i], bitpos) == 0) {
+                if (output_file) {
+                    fprintf(output_file, "Error: Invalid bit pattern at index %u\n", i);
+                    fprintf(output_file, "Expected 1, but found 0 at bitpos %u: ", bitpos);
+                    print_binary_repr(arr[i], output_file);
+                } else {
+                    printf("Error: Invalid bit pattern at index %u\n", i);
+                    printf("Expected 1, but found 0 at bitpos %u: ", bitpos);
+                    print_binary_repr(arr[i], output_file);
+                }
+            } */
+        }
+    }
+}
 
 #endif

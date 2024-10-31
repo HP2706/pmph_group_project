@@ -10,6 +10,8 @@
 #include "../constants.cuh"
 /// helper kernels from assignment 2 and 3-4
 
+
+
 // blockDim.y = T; blockDim.x = T
 // each block transposes a square T
 
@@ -80,13 +82,6 @@ bool __host__ __device__ isBitUnset(int pos, T val) {
     return (val & (1 << pos)) == 0;
 }
 
-
-
-template<typename T>
-bool __host__ __device__ getBitAtPosition(T num, uint32_t bitpos) {
-    // Return true if bit is 1, false if bit is 0
-    return (num & (1 << bitpos)) != 0;
-}
 
 
 template<class T, int lgH>
