@@ -6,13 +6,16 @@
 #include <iostream>
 #include <cstdint>
 #include "tests/test_transpose_ker.cu"
-#include "tests/test_scan_inc.cu"
 #include "tests/test_count_sort.cu"
 #include "tests/test_radix_sort_ker.cu"
-#include "tests/test_rank_permute.cu"
 #include "tests/test_histo_ker.cu"
 #include "tests/test_glb_to_reg.cu"
+#include "tests/test_two_way_partition.cu"
 #include <cuda_runtime.h>
+#include <iostream>
+#include <algorithm>
+#include <vector>
+
 
 int main() {
     initHwd();
@@ -29,7 +32,7 @@ int main() {
     printf("grid size : %u\n", GRID_SIZE);
 
     using P = Params<
-        uint8_t, 
+        uint32_t, 
         uint32_t, 
         Q, 
         lgH, 
@@ -38,12 +41,12 @@ int main() {
         T
     >;
 
-
+    //TestTwoWayPartition<P>();
     //test_verify_transpose<P>(input_size);
     //test_call_rank_permute_ker<P>(input_size);
 
-    //test_radix_sort_ker<P>(input_size);
-    test_glb_to_reg_ker<P>(input_size);
+    test_radix_sort_ker<P>(input_size);
+    //test_glb_to_reg_ker<P>(input_size);
     //test_count_sort<P>(input_size);
     //printf("CountSort done\n");
 

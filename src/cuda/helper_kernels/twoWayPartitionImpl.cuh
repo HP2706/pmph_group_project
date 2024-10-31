@@ -1,8 +1,9 @@
+#pragma once
+
 #include <algorithm>
 #include <iostream>
 #include "../constants.cuh"
 #include "../helper.h"
-
 
 
 template<class P>
@@ -51,19 +52,6 @@ __device__ void TwoWayPartition(
         }
         __syncthreads();
 
-        /* if (tid == 0 && bid == 0) {
-            // print the local histogram
-            printf("Local histogram: ");
-            for (int i = 0; i < P::BLOCK_SIZE; i++) {
-                printf("%d ", local_histo[i]);
-            }
-            printf("\n");
-
-            printf("Prefix thread: %d\n", prefix_thread);
-            printf("Accum: %d\n", accum);
-        } 
-        __syncthreads(); */
-
         // we rearrange the elements based on the bit value
         for (int q_idx = 0; q_idx < P::Q; q_idx++) {
             uint val = reg[q_idx];
@@ -102,14 +90,43 @@ __device__ void TwoWayPartition(
             }
         }
         __syncthreads();
+
+        // After rearrangement and syncthreads, add debug print
+        if (tid == 0 && bid == 0) {
+            printf("After bit %d (examining bit position %d):\n", bit, bitpos + bit);
+            
+            // Find break point
+            int break_point = -1;
+            for (int i = 0; i < P::Q*P::BLOCK_SIZE; i++) {
+                bool is_unset = isBitUnset<uint>(bitpos + bit, shmem[i]);
+                if (!is_unset) {  // Found first 1
+                    break_point = i;
+                    break;
+                }
+            }
+            
+            printf("Break point (0->1) found at index: %d\n", break_point);
+            
+            // Check for violations after break point
+            if (break_point != -1) {
+                for (int i = break_point + 1; i < P::Q*P::BLOCK_SIZE; i++) {
+                    bool is_unset = isBitUnset<uint>(bitpos + bit, shmem[i]);
+                    if (is_unset) {  // Found a 0 after break point
+                        printf("VIOLATION at idx %d: ", i);
+                        print_binary_repr<uint>(shmem[i]);
+                        printf(" (expected 1, got 0)\n");
+                    }
+                }
+            }
+            printf("\n");
+        }
+        __syncthreads();
     }
 }
 
 
-
-
 template<class T>
-void TwoWayPartitionCpu(
+inline void TwoWayPartitionCpu(
     uint32_t bitpos,
     uint32_t N,
     T* arr_inp,
@@ -129,12 +146,15 @@ void TwoWayPartitionCpu(
         std::cout << "\n\n";
     }
     
+    printf("calling std::partition\n");
     // Use std::partition to do the partitioning
     std::partition(arr_out, arr_out + N, 
         [bitpos](const T& val) {
             return isBitUnset(bitpos, val);
         }
     );
+
+    printf("std::partition done\n");
 
     if (debug) {
         // Print partitioned array
@@ -155,5 +175,17 @@ void TwoWayPartitionCpu(
         std::cout << "\nPartition point: " << partition_point << "\n";
         std::cout << "First part (0s): " << partition_point << " elements\n";
         std::cout << "Second part (1s): " << N - partition_point << " elements\n";
+    }
+
+    // Add debugging for each bit position
+    for (uint32_t bit = 0; bit < 8; bit++) {  // Assuming 8 bits like in GPU version
+        if (debug) {
+            std::cout << "Examining bit position " << (bitpos + bit) << ":\n";
+            for(uint32_t i = 0; i < N; i++) {
+                bool is_unset = isBitUnset(bitpos + bit, arr_out[i]);
+                std::cout << arr_out[i] << "(" << (is_unset ? "0" : "1") << ") ";
+            }
+            std::cout << "\n\n";
+        }
     }
 }

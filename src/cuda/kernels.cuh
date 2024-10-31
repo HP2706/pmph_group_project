@@ -183,6 +183,9 @@ __host__ void RadixSortKer(
         // increment the bit position
         bit_offs += P::lgH;
 
+        // we should verify that for the current bit position, the output array is sorted
+        
+
         // swap the input and output arrays
         typename P::ElementType* tmp = d_in;
         d_in = d_out;
@@ -194,6 +197,7 @@ __host__ void RadixSortKer(
         cudaMemset(d_hist_transposed_scanned, 0, sizeof(uint64_t) * P::H * P::GRID_SIZE);
         cudaMemset(d_hist_transposed_scanned_transposed, 0, sizeof(uint64_t) * P::H * P::GRID_SIZE);
         cudaMemset(d_tmp, 0, sizeof(uint64_t) * P::BLOCK_SIZE);
+
     }
 
     cudaFree(d_hist);

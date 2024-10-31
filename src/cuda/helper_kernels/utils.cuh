@@ -76,9 +76,18 @@ uint32_t getNumBlocks(const uint32_t N, const uint32_t B, uint32_t* num_chunks) 
 }
 
 template<class T>
-bool __device__ isBitUnset(int pos, T val) {
+bool __host__ __device__ isBitUnset(int pos, T val) {
     return (val & (1 << pos)) == 0;
 }
+
+
+
+template<typename T>
+bool __host__ __device__ getBitAtPosition(T num, uint32_t bitpos) {
+    // Return true if bit is 1, false if bit is 0
+    return (num & (1 << bitpos)) != 0;
+}
+
 
 template<class T, int lgH>
 int __device__ getBits(int pos, T val) {

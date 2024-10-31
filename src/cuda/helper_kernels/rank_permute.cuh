@@ -5,7 +5,7 @@
 #include "../helper.h"
 #include "utils.cuh"
 #include <limits>
-#include "twoWayPartition.cuh"
+#include "twoWayPartitionImpl.cuh"
 
 
 /// we use UintType as we are manipulating 

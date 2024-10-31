@@ -19,6 +19,26 @@ uint32_t HWD;
 uint32_t BLOCK_SZ;
 
 
+template<typename T>
+__device__ __host__ void print_binary_repr(T num) {
+    printf("%u (", num);
+    for (int b = sizeof(T) * 8 - 1; b >= 0; b--) {
+        printf("%d", (num >> b) & 1);
+    }
+    printf(")\n");
+}
+
+
+template<typename T>
+bool __host__ __device__ check_isBitUnset(T val, uint32_t bitpos) {
+    bool cpu_bit_at_pos = (bool)getBitAtPosition(val, bitpos);
+    bool cpu_is_bit_unset = (bool)isBitUnset(bitpos, val);
+
+    // bit_at_pos = !cpu_is_bit_unset
+    return (cpu_bit_at_pos != cpu_is_bit_unset);
+}
+
+
 // this is a struct that holds the generic parameters for the radix sort
 
 template<
