@@ -81,7 +81,7 @@ __host__ void CountSort(
     // in the future use something like FusedAddCast<uint16_t, uint32_t>
     scanInc<FusedAddCast<uint16_t, uint64_t>>(
         P::BLOCK_SIZE, // Block size
-        P::HB,          // Histogram size
+        P::GRID_SIZE*P::H,  // Histogram size
         d_hist_transposed_scanned,     // output: scanned histogram
         d_hist_transposed,
         d_tmp              // temporary storage
@@ -151,10 +151,10 @@ __host__ void RadixSortKer(
     uint64_t* d_hist_transposed_scanned_transposed;
     uint64_t* d_tmp;
 
-    cudaMalloc((void**) &d_hist, sizeof(uint16_t) * P::HB);
-    cudaMalloc((void**) &d_hist_transposed, sizeof(uint16_t) * P::HB);
-    cudaMalloc((void**) &d_hist_transposed_scanned, sizeof(uint64_t) * P::HB);
-    cudaMalloc((void**) &d_hist_transposed_scanned_transposed, sizeof(uint64_t) * P::HB);
+    cudaMalloc((void**) &d_hist, sizeof(uint16_t) * P::H*P::GRID_SIZE);
+    cudaMalloc((void**) &d_hist_transposed, sizeof(uint16_t) * P::H*P::GRID_SIZE);
+    cudaMalloc((void**) &d_hist_transposed_scanned, sizeof(uint64_t) * P::H*P::GRID_SIZE);
+    cudaMalloc((void**) &d_hist_transposed_scanned_transposed, sizeof(uint64_t) * P::H*P::GRID_SIZE);
     cudaMalloc((void**) &d_tmp, sizeof(uint64_t) * P::BLOCK_SIZE);
     
     // STRICTLY FOR DEBUGGING

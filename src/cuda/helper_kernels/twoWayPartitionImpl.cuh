@@ -95,13 +95,22 @@ __device__ void TwoWayPartition(
 
         // After rearrangement and syncthreads, add debug print
         if (tid == 0) {
-            /* printf("debugging at position %d\n", bit_offs + bit);
+            printf("debugging shmem after bit_offs: %d, bit: %d\n", bit_offs, bit);
             debugPartitionCorrectness<P>(
                 shmem, 
                 min(N, P::BLOCK_SIZE * P::Q),
                 bit_offs + bit
-            ); */
+            );
         }
+        __syncthreads();
+
+        printf("debugging registers of thread %d after bit_offs: %d, bit: %d\n", 
+               tid, bit_offs, bit);
+        debugPartitionCorrectness<P>(
+            reg, 
+            P::Q, 
+            bit_offs + bit
+        );
         __syncthreads();
     }
 }

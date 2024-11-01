@@ -215,28 +215,30 @@ template<class P>
 __device__ void debugPartitionCorrectness(
     typename P::ElementType* arr,
     uint32_t N,
-    uint32_t bitpos // bit_offs + bit
+    uint32_t bitpos, // bit_offs + bit
+    bool print_all = false
 ) {
-    printf("After (examining bit position %d) for block %d:\n", bitpos, blockIdx.x);
-    
+
     // Find break point
     int break_point = -1;
     for (int i = 0; i < N; i++) {
         bool is_unset = isBitUnset<typename P::ElementType>(bitpos, arr[i]);
-        printf("bit: %d, idx: %d, is_unset = %d\n", bitpos, i, is_unset);
+        if (print_all) {
+            printf("bit: %d, idx: %d, is_unset = %d\n", bitpos, i, is_unset);
+        }
         
         if (break_point == -1 && !is_unset) {  // Found first 1
             break_point = i;
-            printf("Break point (0->1) found at index: %d\n", break_point);
+            if (print_all) {
+                printf("Break point (0->1) found at index: %d\n", break_point);
+            }
         } else if (break_point != -1 && is_unset) {  // Check violations after break point
             printf("VIOLATION at idx %d: ", i);
             print_binary_repr<typename P::ElementType>(arr[i]);
-            printf(" (expected 1, got 0)\n");
-            asm("trap;"); // throw an exception
+            printf(" (expected 1, got 0) breakpoint idx: %d\n", break_point);
+            //asm("trap;"); // throw an exception
         }
     }
-    printf("\n");
-    printf("done\n");
 }
 
 

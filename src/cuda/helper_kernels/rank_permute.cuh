@@ -42,8 +42,6 @@ __device__ void GlbToReg(
     __syncthreads();
 }
 
-
-
 template<class P>
 __device__ void WriteOutput(
     typename P::ElementType reg[P::Q],
@@ -51,12 +49,13 @@ __device__ void WriteOutput(
     uint16_t* local_histo,
     uint16_t* d_hist,
     uint64_t* d_hist_transposed_scanned_transposed,
-    uint32_t bitpos,
+    uint32_t bit_offs,
     uint32_t N,
     typename P::ElementType* arr_out
 ) {
     uint32_t tid = threadIdx.x;
     uint32_t bid = blockIdx.x;
+
 
     // step 3.1: copy histogram from global to shared memory
     uint32_t global_histo_offs = bid * P::H;
@@ -75,12 +74,14 @@ __device__ void WriteOutput(
     }
     __syncthreads();
 
+
     // step 3.3: write elements to their final positions
     for (int q_idx = 0; q_idx < P::Q; q_idx++) {
         typename P::ElementType elm = reg[q_idx];
-        int bin = getBits<uint, P::lgH>(bitpos, elm);
+        int bin = getBits<uint, P::lgH>(bit_offs, elm);
         uint32_t global_offs = global_histo[bin];
-        uint32_t global_pos = global_offs + (q_idx*P::BLOCK_SIZE + tid);
+        uint32_t local_pos = q_idx*P::BLOCK_SIZE + tid;
+        uint32_t global_pos = global_offs + local_pos;
 
         if (global_pos < N) {
             arr_out[global_pos] = elm;
@@ -152,12 +153,14 @@ __global__ void RankPermuteKer(
     );
     __syncthreads();
 
+    int debug_bit_offs = bit_offs + P::lgH - 1;
+    
     if (tid == 0) {
-        printf("debugging after two way partition\n bit_offs: %d\n", bit_offs + P::lgH - 1);
+        printf("debugging after two way partition at bit_offs: %d\n", debug_bit_offs);
         debugPartitionCorrectness<P>(
             shmem, 
             min(N, P::BLOCK_SIZE * P::Q),
-            bit_offs + P::lgH - 1
+            debug_bit_offs
         );
     }
     __syncthreads();
@@ -181,11 +184,11 @@ __global__ void RankPermuteKer(
     );
 
     if (tid == 0) {
-        printf("debugging after write output\n bit_offs: %d\n", bit_offs + P::lgH - 1);
+        printf("debugging after write output\n bit_offs: %d\n", debug_bit_offs);
         debugPartitionCorrectness<P>(
             arr_out, 
             min(N, P::BLOCK_SIZE * P::Q),
-            bit_offs + P::lgH - 1
+            debug_bit_offs
         );
     }
     __syncthreads();

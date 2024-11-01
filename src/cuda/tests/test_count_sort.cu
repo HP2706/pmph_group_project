@@ -240,7 +240,7 @@ __host__ void test_count_sort(
     // in the future use something like FusedAddCast<uint16_t, uint32_t>
     scanInc<Add<typename P::UintType>>(
         P::BLOCK_SIZE, // Block size
-        P::HB,          // Histogram size
+        P::H*P::GRID_SIZE,          // Histogram size
         d_hist_transposed_scanned,     // output: scanned histogram
         d_hist_transposed,
         d_tmp              // temporary storage
