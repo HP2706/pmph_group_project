@@ -17,6 +17,30 @@
 #include "../cub_kernel.cuh"
 #include <cuda_runtime.h>
 
+template<class T>
+void quickvalidatesortedarray(
+    uint32_t N,
+    T* arr_inp
+) {
+    bool success = true;
+    for (uint32_t i = 0; i < N-1; ++i)
+    {
+        if (arr_inp[i] > arr_inp[i+1])
+        {
+            printf("Element %d: %d is larger than element %d: %d in our array, thus it is not sorted correctly.\n", i, arr_inp[i], i+1, arr_inp[i+1]);
+            success = false;
+        }
+    }
+    if (success)
+    {
+        printf("Sorted entire array successfully with our implementation! (No errors)\n");
+    }
+    else
+    {
+        printf("Sorted entire array incorrectly! (Errors)\n");
+    }
+}
+
 template<typename P>
 __host__ void test_radix_sort_ker(
     uint32_t input_size
@@ -97,6 +121,7 @@ __host__ void test_radix_sort_ker(
         printf("line 113 h_out[%d]: %u\n", i, h_out[i]);
     }
 
+    quickvalidatesortedarray<uint32_t>(input_size, h_out);
 
     // if file already exists, delete it
     std::remove("radix_sort_output.txt");
@@ -115,9 +140,9 @@ __host__ void test_radix_sort_ker(
     printf("writing cub sort output to file\n");
 
 
-    for (int i = 0; i < input_size; i++) {
+    /*for (int i = 0; i < input_size; i++) {
         printf("cub_h_in[%d]: %u\n", i, cub_h_in[i]);
-    }
+    }*/
     // Calculate grid size based on input size
     int elements_per_block = P::BLOCK_SIZE * P::Q;
     int grid_size = (input_size + elements_per_block - 1) / elements_per_block;
@@ -129,7 +154,7 @@ __host__ void test_radix_sort_ker(
         cub_d_out, 
         input_size
     );
-
+    
 
     cudaDeviceSynchronize();
     cudaError_t cub_err = cudaGetLastError();
@@ -140,9 +165,9 @@ __host__ void test_radix_sort_ker(
     // copy results back to host
     cudaMemcpy(cub_h_out, cub_d_out, input_size * sizeof(typename P::ElementType), cudaMemcpyDeviceToHost);
     
-    for (int i = 0; i < input_size; i++) {
+    /*for (int i = 0; i < input_size; i++) {
         printf("cub_h_out[%d]: %u\n", i, cub_h_out[i]);
-    }
+    }*/
 
     
     std::remove("cub_sort_output.txt");
