@@ -27,8 +27,8 @@
 
 
 \title{PMPH group project: Sorting on GPUs}
-\author{Mathias Heldbo}
-\date{October 2024}
+\author{Mathias Heldbo (tzc182), Rasmus Gabelgaard Nielsen (ncg106) \\ and Hans Peter Lyngsøe (pvr448)}
+\date{November 2024}
 
 \begin{document}
 
@@ -86,10 +86,10 @@ Although \citep{zagharadixvector} was great at the time, our literature search p
 \begin{figure} [H]
     \centering
     \includegraphics[width=\linewidth]{satish.PNG}
-    \caption{Satish steps}
+    \caption{Satish steps \citep{satish}}
     \label{fig:enter-label}
 \end{figure}.
-They also proposed parallel local radix counting and pre-sorting as well as global radix ranking and coalesced global shuffling\citep{satish}Building off these concepts, Ha. et. al proposed two improvements, implicit counting and a mixed-data structure with 4-bit digits
+They also proposed parallel local radix counting and pre-sorting as well as global radix ranking and coalesced global shuffling\citep{satish}Building off these concepts, Ha. et. al proposed two improvements, implicit counting and a mixed-data structure with 4 elements, that is 2-bit digits.
 \begin{itemize}
 \item Implicit counting \\
 Uses bit shifting to create a 32-bit register for radix value 0, 1 and 2. With the count of 0 assigned to bits from 0 to 9, the count of 1 assigned to bit values from 10-19, and the count of 2 assigned to bits from 20-29. The implicit count is: $$impl_{cnt} = cnt_0 + (cnt_1 \ll 10) + (cnt_2 \ll 20)$$
@@ -118,6 +118,47 @@ We have decided to attempt to implement the Ha. et. al algorithm
 
 
 \end{itemize}
+\begin{lstlisting}
+1. Initialize data structures:
+   - Load input keys and values.
+     * Work: O(n), Depth: O(1)
+
+2. Iterate through bit shifts:
+   For each bit shift (e.g., 4 bits per pass):
+     - Map the current bit shift to all elements.
+       * Work: O(n), Depth: O(1)
+     - Create an array of structures `AoS` by associating each element's index and key.
+       * Work: O(n), Depth: O(1)
+
+3. Local counting and presorting (within each block):
+   - For each block of block size B * 4 elements:
+     - Compute implicit counts:
+       * Work: O(B*4)  per block, total O(n), Depth: O(log B*4)
+
+     - Calculate the local rank for each element in the block using **exclusive scan** on the histogram:
+       * Work: O(B*4) per block, total O(n), Depth: O(log B*4)
+
+     - Scatter locally (pre sort):
+       * Work: O(B) per block, total O(n), Depth: O(1)
+
+4. Global ranking and offset calculation:
+   - Compute global offsets using **prefix sum** (scan) across all local histograms:
+     * Work: O(P) = O(n/(B))
+     * Depth: O(log P) = O(log n/(B))
+
+   - Adjust local ranks by adding block offsets:
+     * Work: O(n), Depth: O(1)
+
+5. Global shuffling and final scatter:
+   - Scatter elements globally using computed global offsets:
+     * Work: O(n), Depth: O(log B)
+
+6. Repeat until all bits are processed.
+   - Number of passes depends on bit width (e.g., for 32-bit keys with 4 bits per pass, we need 8 passes).
+   - Total:
+     * Work: O(n * passes), Depth: O(passes} * (log B + log P) = O(passes * (log B + log (n/B)))
+\end{lstlisting}
+
 Bank conflict-free access, storing in different arrays to avoid concurrent access, 
 Mapping of integers from [a,b to 0, b-a] for integers, and floats by mapping from [a,b] to [0.5, 1] to change from 32 bit to 24 bit. 30\% performance increase. It is an approximation but it is precise enough.
 
