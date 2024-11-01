@@ -1,0 +1,131 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{natbib}
+\usepackage{hyperref}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{algpseudocode}
+
+\lstset{
+    backgroundcolor=\color{lightgray}, % background color
+    basicstyle=\footnotesize\ttfamily, % font size and type
+    breaklines=true, % enables line breaking
+    frame=single, % adds a frame around the code
+    numbers=none, % disable line numbers
+    keywordstyle=\color{blue}, % keyword color
+    commentstyle=\color{green}, % comment color
+    stringstyle=\color{red}, % string color
+    linewidth=1.2\textwidth, % adjusts the width of the code block
+    xleftmargin=1em, % left margin for the code block
+    xrightmargin=1em % right margin for the code block
+}
+
+
+\title{PMPH group project: Sorting on GPUs}
+\author{Mathias Heldbo}
+\date{October 2024}
+
+\begin{document}
+
+\maketitle
+
+\section{The radix sort algorithm }
+In order to gain an understanding of radix sort, the sequential implementation will be discussed, and then a discussion of parallelization using basic blocks. 
+\begin{itemize}
+\item Radix sort
+The basic idea of radix sort is to sort an integer into digits consisting of r bits. Then the list is sorted for each digit until all digits have been traversed and the list is fully sorted. The main assumption of radix sort is that all integers in the input list can be split into digits
+\item Radix sort sequential:
+The sequential implementation iterates through the digits, r bits at a time, a standard implementation is 1 bit at a time, but more is more efficient. Each digit m, has r bits, such that $m = 2^r$. Radix sort works by performing a counting sort on each set of digits, until all digits have been traversed. Counting sort follows the following syntax: 
+\begin{figure} [H]
+    \includegraphics[width=0.5\linewidth]{count_sort.PNG}
+    \caption{Counting Sort \citep{zagharadixvector}}
+    \label{fig:enter-label}
+\end{figure}.
+
+Where Histogram-Keys counts the number of elements in a bucket for each unique digit. Scan-Buckets, scan the buckets and returns the position at which the first element of a subset having a certain digit is to be placed, that is, the offset. Finally, Rank-and-permute matches the digit value with the bucket offset and iterates through each "sub bucket" to order the elements by their digit. After this, counting sort is repeated on each subset of digits until the whole list is sorted.  
+\item For parallelization of radix sort, similar ideas are used, however, there a few key differences. One such method is discussed in \citep{zagharadixvector}. With p processors, the input list is split into p sub-lists for each processor to work on. Each processor performs Histogram-keys locally to create local histograms, then scan buckets is run globally to calculate the global offset, Rank and Permute can then be performed locally and written to global memory as Rank and Permute takes in the offset, and therefore doesn't overwrite the work done by other processors \citep{zagharadixvector}.
+
+Let us now consider a very simple parallel radix sort implementation going through 1 bit at a time, for 32 bit integers using basic blocks, and let us consider the example of
+$$\begin{bmatrix} 1, 4, 2, 3\end{bmatrix}$$
+with a bit representation of: 
+$$\begin{bmatrix} 001, 100, 010, 011\end{bmatrix}$$
+Please bear in mind that this implementation is a very simplified parallel radix sort implementation in Futhark using basic blocks such as map, scan, reduce and scatter. Due to its syntax, Futhark automatically distributes the processes depending on available processors, however, better approaches are discussed in part 2. 
+\begin{lstlisting}
+
+-- xs = [1,4,2,3] in integer format
+-- xs = [001, 100, 010, 011] in bit format 
+def radix_bit [n] 't (f: t -> u32) (xs: [n]t) (b: i32): [n]t =
+(1)    let bits = map(\x -> (i32.u32 (f x >> u32.i32 b )) & 1) xs -- [1, 0, 0, 1], D = O(1), W = O(n)
+(2)    let bits_neg = map (1-) bits                               -- [0, 1, 1, 0], D = O(1), W = O(n)
+(3)    let offs = reduce (+) 0 bits_neg                           -- 2,            D = O(log n), W = O(n)
+(4)    let idxs0 = map2 (*) bits_neg (scan (+) 0 bits_neg)        -- [0, 1, 2, 0], D = O(log n), W = O(n)
+(5)    let idxs1 = map2 (*) bits (map (+offs) (scan (+) 0 bits))  -- [3, 0, 0, 4], D = O(log n), W = O(n)
+(6)    let idxs2 = map2 (+) idxs0 idxs1                           -- [3, 1, 2, 4], D = O(1), W = O(n)
+(7)    let idxs = map (\x -> x-1) idxs2                           -- [2, 0, 1, 3], D = O(1), W = O(n)
+(8)    let xs' = scatter (copy xs) idxs xs                        -- [4, 2, 1, 3], D = O(1), W = O(n)
+       -- in terms of the bit in question, it becomes        [100, 010, 001, 011]
+(9)    in xs'                                                                   -- D = O(log n), W = O(n)
+
+def radix [n] 't (f: t -> u32) (xs: [n]t): [n]t = 
+(10)    loop xs for i < 32 do radix_bit f xs i                     -- D = O(log n), W = O(n)
+\end{lstlisting}
+
+This implementation is from \href{https://futhark-lang.org/examples/radix-sort-key.html}{radix-sort-key (futhark-lang.org)}, and applied to each bit of 32 bit unsigned integers, as radix sort requires each digit to be in the range of 0 to m-1. The radix\_bit part of the algorithm takes in a bit. The bits are stored in bits (1), bits\_neg (2) contains the bits converted to their compliment, offs (3), get the offsets of the bits by calculating how many 0 bits there are, which is what bits\_neg is used for. Idxs0 (4) finds the indices of elements with a bit of 0, while idxs1 (5) finds the indices of elements with a bit of 1, and idxs2 (6) concatenate those two lists. Indexes are then stored in idxs (7) assuming zero indexing, by subtracting 1 from every index. Then scatter (8) is used to distribute the elements to their corresponding location.
+\\
+Let us now consider the work depth complexity, for a list of length n, the work and depth complexity is written next to the code, where scan and reduce both have a depth complexity of O(log n), and all lines have O(n) work complexity, as they traverse n elements. While this work depth complexity might seem good on paper, this is a best case scenario, in which we always have n processors. More advanced methods deal with the distribution of the workload in a fashion more suited to the GPU, and this improving the overall speed and efficiency of the algorithm. 
+\end{itemize}
+
+\section{Fast parallel radix sort}
+
+Although \citep{zagharadixvector} was great at the time, our literature search provided several higher performing parallel radix sorts. The first implementation by Satish et. al. provides a significant speed up from previous methods using the following ground principles and distributing 4 bit digits per thread, 
+\begin{figure} [H]
+    \centering
+    \includegraphics[width=\linewidth]{satish.PNG}
+    \caption{Satish steps}
+    \label{fig:enter-label}
+\end{figure}.
+They also proposed parallel local radix counting and pre-sorting as well as global radix ranking and coalesced global shuffling\citep{satish}Building off these concepts, Ha. et. al proposed two improvements, implicit counting and a mixed-data structure with 4-bit digits
+\begin{itemize}
+\item Implicit counting \\
+Uses bit shifting to create a 32-bit register for radix value 0, 1 and 2. With the count of 0 assigned to bits from 0 to 9, the count of 1 assigned to bit values from 10-19, and the count of 2 assigned to bits from 20-29. The implicit count is: $$impl_{cnt} = cnt_0 + (cnt_1 \ll 10) + (cnt_2 \ll 20)$$
+The implicit value is: 
+$$impl_{val} = (val \lt  3) \ll (10 \cdot val)$$
+$impl_{cnt}$ is calculated by incrementing by the $impl_{val}$:
+$$impl_{cnt} = impl_{cnt} + impl_{val}$$
+The count is retrieved by: 
+$$cnt\begin{bmatrix}val\end{bmatrix} = impl_{cnt} \gg (10 \cdot val) $$
+and the fourth counting value is retrieved by:
+$$cnt\begin{bmatrix} 3 \end{bmatrix} = idx - cnt\begin{bmatrix} 0 \end{bmatrix} - cnt\begin{bmatrix} 1 \end{bmatrix} - cnt\begin{bmatrix} 2 \end{bmatrix}$$
+Thus implicit counting reduces the count operations from 4 in Satish. et. al to 2. 
+\item Mixed-data structure \\
+
+\begin{figure} [H]
+    \centering
+    \includegraphics[width=\linewidth]{mixed-data.PNG}
+    \caption{Mixed data method \citep{ha2010implicit}}
+    \label{fig:enter-label}
+\end{figure}.
+Ha. et. al's hybrid data structure uses AoS and SoA, which reduces suboptimal coalesced scattering effects, and requires only one shuffle pass on the pre sorting data due to the structure \citep{ha2010implicit} 
+\\
+We have decided to attempt to implement the Ha. et. al algorithm
+\item Pseudocode
+
+
+
+\end{itemize}
+Bank conflict-free access, storing in different arrays to avoid concurrent access, 
+Mapping of integers from [a,b to 0, b-a] for integers, and floats by mapping from [a,b] to [0.5, 1] to change from 32 bit to 24 bit. 30\% performance increase. It is an approximation but it is precise enough.
+
+\section{In depth cuda implementation}
+
+\section{Performance evaluation}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}
