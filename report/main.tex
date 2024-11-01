@@ -122,7 +122,12 @@ We have decided to attempt to implement the Ha. et. al algorithm
 1. Initialize data structures:
    - Load input keys and values.
      * Work: O(n), Depth: O(1)
-
+   - Assuming the input is integers we can map from 32 to 24 bit by:
+   - Determine [a,b] using reduce
+     * Work: O(n), Depth: O(log n)
+   - Map input values from a, b to [0, b-a]
+     * Work: O(n), Depth: O(1)
+     
 2. Iterate through bit shifts:
    For each bit shift (e.g., 4 bits per pass):
      - Map the current bit shift to all elements.
@@ -154,12 +159,12 @@ We have decided to attempt to implement the Ha. et. al algorithm
      * Work: O(n), Depth: O(log B)
 
 6. Repeat until all bits are processed.
-   - Number of passes depends on bit width (e.g., for 32-bit keys with 4 bits per pass, we need 8 passes).
+   - Number of passes depends on bit width (e.g., for 24-bit keys (mapping from 32 to 24) with 2 bits (4 elements) per pass, we need 16 passes).
    - Total:
-     * Work: O(n * passes), Depth: O(passes} * (log B + log P) = O(passes * (log B + log (n/B)))
+     * Work: O(n * #passes), Depth: O(#passes * (log B + log P) = O(#passes * (log B + log (n/B)))
 \end{lstlisting}
 
-Bank conflict-free access, storing in different arrays to avoid concurrent access, 
+Additionally, the algorithm has bank conflict-free access, storing in different arrays to avoid concurrent access, 
 Mapping of integers from [a,b to 0, b-a] for integers, and floats by mapping from [a,b] to [0.5, 1] to change from 32 bit to 24 bit. 30\% performance increase. It is an approximation but it is precise enough.
 
 \section{In depth cuda implementation}
