@@ -93,6 +93,8 @@ __device__ void TwoWayPartition(
         }
         __syncthreads();
 
+
+        #if 0
         // After rearrangement and syncthreads, add debug print
         if (tid == 0) {
             printf("debugging shmem after bit_offs: %d, bit: %d\n", bit_offs, bit);
@@ -102,16 +104,15 @@ __device__ void TwoWayPartition(
                 bit_offs + bit
             );
         }
-        __syncthreads();
+        __syncthreads(); 
 
-        printf("debugging registers of thread %d after bit_offs: %d, bit: %d\n", 
-               tid, bit_offs, bit);
         debugPartitionCorrectness<P>(
             reg, 
             P::Q, 
             bit_offs + bit
         );
         __syncthreads();
+        #endif
     }
 }
 

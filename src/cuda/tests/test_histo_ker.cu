@@ -92,15 +92,9 @@ void test_histo_ker(uint32_t input_size) {
     if (err != cudaSuccess) {
         printf("Histogram kernel failed: %s\n", cudaGetErrorString(err));
         return;
-    } else {
-        printf("Histogram kernel done\n");
-    }
+    } 
 
     cudaMemcpy(h_hist, d_hist, sizeof(typename P::UintType) * hist_len, cudaMemcpyDeviceToHost);
-    
-    for (uint32_t i = 0; i < hist_len; i++) {
-        printf("h_hist[%d] = %d, cpu_hist[%d] = %d\n", i, h_hist[i], i, cpu_hist[i]);
-    }
 
     assert(validate<typename P::UintType>(h_hist, cpu_hist, hist_len));
     printf("histogram results validated\n");

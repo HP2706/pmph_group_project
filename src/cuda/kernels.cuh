@@ -39,7 +39,8 @@ __host__ void CountSort(
     uint64_t* d_hist_transposed_scanned,
     uint64_t* d_tmp,
     uint32_t N,
-    uint32_t bit_offs
+    uint32_t bit_offs,
+    typename P::ElementType* h_out_debug = nullptr
 ) {
 
     // TODO
@@ -119,8 +120,8 @@ __host__ void CountSort(
     RankPermuteKer<P>
     <<<
         P::GRID_SIZE, 
-        P::BLOCK_SIZE,  
-        shm_size
+        P::BLOCK_SIZE
+        //shm_size
     >>>
     (
         d_hist,
@@ -130,6 +131,24 @@ __host__ void CountSort(
         d_in,
         d_out
     );
+
+    if (h_out_debug != nullptr) {
+        int debug_bit_offs = bit_offs + P::lgH - 1;
+
+        cudaMemcpy(h_out_debug, d_out, sizeof(typename P::ElementType) * N, cudaMemcpyDeviceToHost);
+
+        for (int i = 0; i < N; i++) {
+            printf("h_out_debug[%d]: %u\n", i, h_out_debug[i]);
+        }
+        /* printf("debugging h_out_debug after rank and permute\n bit_offs: %d\n", debug_bit_offs);
+        debugPartitionCorrectness<P>(
+            h_out_debug, 
+            min(N, P::BLOCK_SIZE * P::Q),
+            debug_bit_offs,
+            true
+        ); */
+    }
+
    
     err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -142,6 +161,7 @@ template<class P>
 __host__ void RadixSortKer(
     typename P::ElementType* d_in, 
     typename P::ElementType* d_out, 
+    typename P::ElementType* d_out_debug,
     int size
 ) {
 
@@ -169,9 +189,6 @@ __host__ void RadixSortKer(
     int bit_offs = 0;
     printf("n_iter: %d\n", n_iter);
 
-    //remove file if it exists
-    remove("output_file.txt");
-    FILE* output_file = fopen("output_file.txt", "w");
 
     for (int i = 0; i < n_iter; i++) {
         CountSort<P>(
@@ -183,22 +200,15 @@ __host__ void RadixSortKer(
             d_hist_transposed_scanned, 
             d_tmp, 
             size, 
-            bit_offs
+            bit_offs,
+            h_out_debug
         );
 
         // increment the bit position
         bit_offs += P::lgH;
-
-        //printf("checking at bit_offs: %d\n", bit_offs);
-        cudaMemcpy(h_out_debug, d_out, sizeof(typename P::ElementType) * size, cudaMemcpyDeviceToHost);
-
-        // we should verify that for the current bit position, the output array is sorted
-        checkBitPatternBreaks<typename P::ElementType>(h_out_debug, size, bit_offs, output_file);
-
-        fprintf(output_file, "bit_offs: %d done\n", bit_offs);
-
         
         if (i < n_iter - 1) {  // Only swap for all but the last iteration
+            printf("swapping d_in and d_out at bit_offs: %d\n", bit_offs);
             typename P::ElementType* tmp = d_in;
             d_in = d_out;
             d_out = tmp;
@@ -210,12 +220,31 @@ __host__ void RadixSortKer(
         cudaMemset(d_hist_transposed_scanned, 0, sizeof(uint64_t) * P::H * P::GRID_SIZE);
         cudaMemset(d_hist_transposed_scanned_transposed, 0, sizeof(uint64_t) * P::H * P::GRID_SIZE);
         cudaMemset(d_tmp, 0, sizeof(uint64_t) * P::BLOCK_SIZE);
+        cudaDeviceSynchronize();
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            printf("count sort kernel failed at iteration %d: %s\n", i, cudaGetErrorString(err));
+            return;
+        }
 
     }
 
-    fclose(output_file);
-    free(h_out_debug);
+    cudaDeviceSynchronize();
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("Radix sort kernel failed: %s\n", cudaGetErrorString(err));
+        return;
+    }
 
+    cudaDeviceSynchronize();
+    
+    cudaMemcpy(h_out_debug, d_out, sizeof(typename P::ElementType) * size, cudaMemcpyDeviceToHost);
+    /* printf("printing the final output array at radix sort end \n");
+    for (int i = 0; i < size; i++) {
+        printf("line 270 h_out_debug[%d]: %u\n", i, h_out_debug[i]);
+    } */
+
+    cudaMemcpy(d_out_debug, d_out, sizeof(typename P::ElementType) * size, cudaMemcpyDeviceToDevice);
 
     cudaFree(d_hist);
     cudaFree(d_hist_transposed);

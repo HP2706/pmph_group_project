@@ -114,15 +114,13 @@ __global__ void RankPermuteKer(
     // 2. Global histogram: H * sizeof(uint64_t)
     // 3. Local histogram: BLOCK_SIZE * sizeof(uint16_t)
     
-    extern __shared__ uint64_t sh_mem_uint64[];
-    
-    // Ensure proper alignment for all types
-    // the interval [0, QB] is reserved for the element buffer
-    uint* shmem = (uint*) sh_mem_uint64;
-    // the interval [QB, QB+H] is reserved for the global histogram
-    uint64_t* global_histo = (uint64_t*)(shmem + P::H);
-    // the interval [QB+H, QB+H+BLOCK_SIZE] is reserved for the local histogram
-    uint16_t* local_histo = (uint16_t*)(global_histo + P::BLOCK_SIZE);
+    const int elms_buf_size = P::BLOCK_SIZE * P::Q;
+
+    __shared__ uint shmem[elms_buf_size];
+    //uint* shmem = (uint*) shmem_buf;
+
+    __shared__ uint64_t global_histo[P::H];
+    __shared__ uint16_t local_histo[P::BLOCK_SIZE];
     
     // we allocate the registers
     // Q elements per thread
@@ -155,15 +153,14 @@ __global__ void RankPermuteKer(
 
     int debug_bit_offs = bit_offs + P::lgH - 1;
     
-    if (tid == 0) {
-        printf("debugging after two way partition at bit_offs: %d\n", debug_bit_offs);
+    /* if (tid == 0) {
         debugPartitionCorrectness<P>(
             shmem, 
             min(N, P::BLOCK_SIZE * P::Q),
             debug_bit_offs
         );
     }
-    __syncthreads();
+    __syncthreads(); */
 
     /* Step 3: Final output generation
      * 1. Copy original and scanned histograms from global to shared memory
@@ -183,15 +180,16 @@ __global__ void RankPermuteKer(
         arr_out
     );
 
-    if (tid == 0) {
+    /* if (tid == 0) {
         printf("debugging after write output\n bit_offs: %d\n", debug_bit_offs);
         debugPartitionCorrectness<P>(
             arr_out, 
             min(N, P::BLOCK_SIZE * P::Q),
-            debug_bit_offs
+            debug_bit_offs,
+            true
         );
     }
-    __syncthreads();
+    __syncthreads(); */
 
 }
 
