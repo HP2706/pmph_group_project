@@ -79,6 +79,7 @@ void test_histo_ker(uint32_t input_size) {
 
     printf("CPU Histogram done\n");
 
+
     Histo<P, typename P::UintType><<<P::GRID_SIZE, P::BLOCK_SIZE>>>(
         d_in, 
         d_hist, 
@@ -97,8 +98,12 @@ void test_histo_ker(uint32_t input_size) {
 
     cudaMemcpy(h_hist, d_hist, sizeof(typename P::UintType) * hist_len, cudaMemcpyDeviceToHost);
     
+    for (uint32_t i = 0; i < hist_len; i++) {
+        printf("h_hist[%d] = %d, cpu_hist[%d] = %d\n", i, h_hist[i], i, cpu_hist[i]);
+    }
+
     assert(validate<typename P::UintType>(h_hist, cpu_hist, hist_len));
-    //printf("Results validated\n");
+    printf("histogram results validated\n");
 
     free(cpu_hist);
     free(h_in);

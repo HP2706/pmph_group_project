@@ -15,7 +15,7 @@ template<class P, class T>
 __global__ void
 Histo(
     typename P::ElementType* inp_vals,        // Input values
-    T* hist,                 // array of length num_bins * gridDim.x
+    T* hist,                 // array of length num_bins * GRID_SIZE
     const uint32_t N,                         // Total number of elements
     const uint32_t bit_pos                    // Starting bit position to examine
 ) {
@@ -26,10 +26,11 @@ Histo(
     const uint32_t bid = blockIdx.x;
     
     // allocate shared memory for local histogram
-    __shared__ uint32_t local_hist[P::H]; 
+    __shared__ uint32_t shmem_hist[P::H]; 
+
     // initialize the local histogram to 0
     if (tid < P::H) {
-        local_hist[tid] = 0;
+        shmem_hist[tid] = 0;
     }
     __syncthreads();
 
@@ -37,23 +38,27 @@ Histo(
     // Q(elms per thread)*B(threads per block)
     const uint32_t global_offset = bid * P::QB;  
 
+    // each thread processes Q elements and writes to shared memory
     for (uint32_t q = 0; q < P::Q; q++) {
         uint32_t local_position = q * P::BLOCK_SIZE + tid;
         uint64_t global_position = global_offset + local_position;
         if (global_position < N) {
 
             typename P::ElementType val = inp_vals[global_position];
-            uint32_t bits = (static_cast<uint32_t>(val) >> bit_pos) & (P::H - 1);
-            atomicAdd(&local_hist[bits], 1);  // Need atomicAdd here for shared memory
+            uint32_t pos = getBits<typename P::ElementType, P::lgH>(bit_pos, val);
+            atomicAdd(&shmem_hist[pos], 1);  // increment the histogram bucket by 1
         }
     }
     __syncthreads();
 
-    // Write to global memory
-    if (tid < P::H) {
-        uint32_t global_offset = bid * P::H;
-        hist[global_offset + tid] = local_hist[tid];
+
+    // write the local histogram to global memory
+    uint32_t global_mem_offset = bid * P::H;
+    // we need a strided version for when P::BLOCK_SIZE < P::H
+    for (uint32_t i = tid; i < P::H; i += P::BLOCK_SIZE) {
+        hist[global_mem_offset + i] = shmem_hist[i];
     }
+    
 }
 
 

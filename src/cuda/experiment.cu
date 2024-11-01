@@ -6,7 +6,6 @@
 #include <iostream>
 #include <cstdint>
 #include "tests/test_transpose_ker.cu"
-#include "tests/test_count_sort.cu"
 #include "tests/test_radix_sort_ker.cu"
 #include "tests/test_histo_ker.cu"
 #include "tests/test_glb_to_reg.cu"
@@ -22,10 +21,10 @@ int main() {
 
     // setup params
 
-    const uint32_t input_size = 100;
-    const uint32_t Q = 4; // 22
+    const uint32_t input_size = 1000;
+    const uint32_t Q = 22; // 22
     const uint32_t lgH = 8;
-    const uint32_t BLOCK_SIZE = 32;
+    const uint32_t BLOCK_SIZE = 128;
     const uint32_t T = 32;
     const uint32_t GRID_SIZE = (input_size + (BLOCK_SIZE * Q - 1)) / (BLOCK_SIZE * Q);
 
@@ -46,14 +45,15 @@ int main() {
     >;
 
     //TestTwoWayPartition<P>();
+    
     //test_verify_transpose<P>(input_size);
     //test_call_rank_permute_ker<P>(input_size);
 
-    test_radix_sort_ker<P>(input_size);
+    //test_radix_sort_ker<P>(input_size);
     //test_glb_to_reg_ker<P>(input_size);
     //test_count_sort<P>(input_size);
     //printf("CountSort done\n");
 
-    //test_histo_ker<P>(input_size);
+    test_histo_ker<P>(input_size);
 
 }
