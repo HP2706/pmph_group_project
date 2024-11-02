@@ -53,6 +53,37 @@ void scanInc( const uint32_t     B     // desired CUDA block size ( <= 1024, mul
 }
 
 
+
+template <class T>
+__global__ void
+naiveTranspose(
+    T* A, 
+    T* B, 
+    int heightA, 
+    int widthA
+) {
+
+  int gidx = blockIdx.x*blockDim.x + threadIdx.x;
+  int gidy = blockIdx.y*blockDim.y + threadIdx.y; 
+
+  if( (gidx >= widthA) || (gidy >= heightA) ) return;
+
+  B[gidx*heightA+gidy] = A[gidy*widthA + gidx];
+}
+
+template <class T>
+__host__ void
+naiveTransposeKer(T* A, T* B, int heightA, int widthA) {
+    dim3 block_dim(16, 16); // You can adjust these values based on your needs
+    dim3 grid_dim(
+        (widthA + block_dim.x - 1) / block_dim.x,
+        (heightA + block_dim.y - 1) / block_dim.y
+    );
+    naiveTranspose<T><<<grid_dim, block_dim>>>(A, B, heightA, widthA);
+}
+
+
+
 /// from exercise 3-4 bmm 
 template <class ElTp, int T> 
 __global__ void matTransposeTiledKer(
@@ -78,6 +109,9 @@ __global__ void matTransposeTiledKer(
       A_tr[y*heightA + x] = tile[threadIdx.x][threadIdx.y];
 }
 
+
+
+
 template<class T, int TILE_SIZE>
 void tiledTranspose(
     T* d_in, // input matrix
@@ -94,7 +128,7 @@ void tiledTranspose(
 // this kernel efficiently 
 // computes the scan across buckets via transpose -> scan -> transpose 
 template<class P>
-void scan_buckets(
+__host__ void scan_buckets(
     uint64_t* arr,
     uint64_t* arr_t,
     uint64_t* arr_t_scanned, 
@@ -106,18 +140,16 @@ void scan_buckets(
     // we transpose to get column-major order and compute the scan
     // then we transpose back to get the row-major format back
 
-    // we allocate a temporary buffer for the 
     uint64_t* d_tmp_buf;
     // NUM_BLOCKS_SCAN is 1024 the largest number of blocks we can have on cuda gpu
-    cudaMalloc(&d_tmp_buf, NUM_BLOCKS_SCAN * sizeof(uint64_t));
+    cudaMalloc(&d_tmp_buf, MAX_BLOCK * sizeof(uint64_t));
 
     tiledTranspose<uint64_t, P::TILE_SIZE>(
         arr, 
-        arr_t, 
+        arr_t, // output matrix
         P::NUM_BLOCKS, // height is the number of blocks we can have on cuda gpu
         P::H // width is the height of the input matrix
     );
-
     // we add uint64_t elemens and store the result in uint64_t
     //FusedAddCast<uint64_t, uint64_t>
     scanInc<Add<uint64_t>, P::Q>(
@@ -128,6 +160,7 @@ void scan_buckets(
         d_tmp_buf // temporary buffer of size NUM_BLOCKS_SCAN
     );
 
+
     // we transpose the result back
     tiledTranspose<uint64_t, P::TILE_SIZE>(
         arr_t_scanned,
@@ -135,8 +168,6 @@ void scan_buckets(
         P::H,
         P::NUM_BLOCKS
     );
-
-    cudaFree(d_tmp_buf);
 
 }
 

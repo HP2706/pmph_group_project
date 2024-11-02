@@ -221,6 +221,7 @@ scanIncBlock(volatile typename OP::RedElTp* ptr, const unsigned int idx) {
     
     // Place the end-of-warp results into a separate location in memory.
     typename OP::RedElTp end = OP::remVolatile(ptr[idx]);
+    
     // synchronize the threads so that every thread has stored 
     // the value in the memory location before we write
     __syncthreads();
