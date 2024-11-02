@@ -43,11 +43,7 @@ __host__ void CountSort(
     typename P::ElementType* h_out_debug = nullptr
 ) {
 
-    // TODO
-    // we should use different uint types for the histogram and the scanned histogram
-    // for a faster kernel
 
-    // check that P is an instance of Params
     static_assert(is_params<P>::value, "P must be an instance of Params");
 
     // we use uint16_t for d_hist
@@ -68,8 +64,8 @@ __host__ void CountSort(
     tiled_transpose_kernel<uint16_t, P::T>(
         d_hist,
         d_hist_transposed,
-        P::H,
-        P::GRID_SIZE
+        P::GRID_SIZE,
+        P::H
     );
     
     cudaDeviceSynchronize();
@@ -100,8 +96,8 @@ __host__ void CountSort(
     tiled_transpose_kernel<uint64_t, P::T>(
         d_hist_transposed_scanned,
         d_hist_transposed_scanned_transposed,
-        P::GRID_SIZE,
-        P::H
+        P::H,
+        P::GRID_SIZE
     );
     
     cudaDeviceSynchronize();
@@ -112,16 +108,10 @@ __host__ void CountSort(
     }
 
 
-    int shm_size = 
-        (P::Q*P::BLOCK_SIZE*sizeof(typename P::ElementType) 
-        + P::H*sizeof(uint64_t)  // global histogram
-        + P::BLOCK_SIZE*sizeof(uint16_t)); // local histogram
-
     RankPermuteKer<P>
     <<<
         P::GRID_SIZE, 
         P::BLOCK_SIZE
-        //shm_size
     >>>
     (
         d_hist,

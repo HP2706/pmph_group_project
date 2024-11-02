@@ -10,10 +10,14 @@
 #include "tests/test_histo_ker.cu"
 #include "tests/test_glb_to_reg.cu"
 #include "tests/test_two_way_partition.cu"
+#include "helper_kernels/prefix_sum.cuh"
+#include "kernels.cuh"
 #include <cuda_runtime.h>
 #include <iostream>
 #include <algorithm>
 #include <vector>
+
+
 
 
 int main() {
@@ -21,7 +25,7 @@ int main() {
 
     // setup params
 
-    const uint32_t input_size = 5633;
+    const uint32_t input_size = 100000;
     const uint32_t Q = 22; // 22
     const uint32_t lgH = 8;
     const uint32_t BLOCK_SIZE = 256;
@@ -31,7 +35,6 @@ int main() {
     printf("total number of threads used: %u\n", GRID_SIZE * BLOCK_SIZE);
     printf("QB: %u\n", Q * BLOCK_SIZE);
     printf("grid size : %u\n", GRID_SIZE);
-
 
 
     using P = Params<
@@ -55,5 +58,6 @@ int main() {
 
     //test_histo_ker<P>(input_size);
     test_radix_sort_ker<P>(input_size);
-
+    
+    //compare_scan_buckets<P>();
 }
