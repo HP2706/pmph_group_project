@@ -6,7 +6,6 @@
 #include "../helper.h"
 
 
-
 template<class P>
 __device__ void TwoWayPartition(
     typename P::ElementType reg[P::Q], // Q elements per thread in registers
@@ -92,27 +91,6 @@ __device__ void TwoWayPartition(
             }
         }
         __syncthreads();
-
-
-        #if 0
-        // After rearrangement and syncthreads, add debug print
-        if (tid == 0) {
-            printf("debugging shmem after bit_offs: %d, bit: %d\n", bit_offs, bit);
-            debugPartitionCorrectness<P>(
-                shmem, 
-                min(N, P::BLOCK_SIZE * P::Q),
-                bit_offs + bit
-            );
-        }
-        __syncthreads(); 
-
-        debugPartitionCorrectness<P>(
-            reg, 
-            P::Q, 
-            bit_offs + bit
-        );
-        __syncthreads();
-        #endif
     }
 }
 

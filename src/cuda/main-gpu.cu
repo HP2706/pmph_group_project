@@ -3,31 +3,106 @@
 #include "cub_kernel.cuh"
 #include "kernels.cuh"
 #include "helper.h"
+#include <unordered_map>
 using namespace std;
 
 #define GPU_RUNS    50
 #define ERR          0.000005
-#define Q            22
 
-template<typename T, int GRID_SIZE, int BLOCK_SIZE, int ITEMS_PER_THREAD>
-void runCub(
-    T* d_in, 
-    T* d_out, 
-    int size
+enum class SortImplementation {
+    CUB,
+    OUR_IMPL
+};
+
+struct ArrayData {
+    void* data;
+    size_t size;
+    std::string type;
+};
+
+std::unordered_map<std::string, std::string> TYPE_MAP = {
+    {"u32", "uint32_t"},
+    {"u64", "uint64_t"},
+    {"u16", "uint16_t"},
+    {"u8", "uint8_t"}
+};
+
+template<typename T>
+ArrayData readDataFile(const char* filename) {
+    FILE* input_file = fopen(filename, "r");
+    if (!input_file) {
+        throw std::runtime_error("Failed to open input file");
+    }
+
+    // Read header
+    char b[2], type[10];
+    if (fscanf(input_file, "%1s %s", b, type) != 2) {
+        fclose(input_file);
+        throw std::runtime_error("Failed to read header");
+    }
+
+    // Verify header format
+    if (b[0] != 'b') {
+        fclose(input_file);
+        throw std::runtime_error("Invalid file format: should start with 'b'");
+    }
+
+    // Count numbers in file
+    size_t size = 0;
+    T value;
+    while (fscanf(input_file, "%u", &value) == 1) {
+        size++;
+    }
+
+    // Reset file position after header
+    fseek(input_file, 0, SEEK_SET);
+    fscanf(input_file, "%1s %s", b, type);  // Skip header
+
+    // Allocate and read data
+    T* data = (T*)malloc(size * sizeof(T));
+    if (!data) {
+        fclose(input_file);
+        throw std::runtime_error("Failed to allocate memory");
+    }
+
+    for (size_t i = 0; i < size; i++) {
+        if (fscanf(input_file, "%u", &data[i]) != 1) {
+            free(data);
+            fclose(input_file);
+            throw std::runtime_error("Failed to read data");
+        }
+    }
+
+    fclose(input_file);
+    return ArrayData{(void*)data, size, std::string(type)};
+}
+
+// benchmarks and returns the time taken in microseconds
+template<class P>
+double runSort(
+    typename P::ElementType* d_in, 
+    typename P::ElementType* d_out, 
+    int size,
+    SortImplementation impl
 ) {
+    uint32_t *d_histogram = nullptr;
+    uint32_t *d_histogram_transposed = nullptr;
+    uint32_t *d_hist_out = nullptr;
 
-    // Dry run
-    CUBSortKernel<
-        T, 
-        BLOCK_SIZE, 
-        ITEMS_PER_THREAD
-    >
-    <<<GRID_SIZE, BLOCK_SIZE>>>
-    (
-        d_in, 
-        d_out, 
-        size
-    );
+    if (impl == SortImplementation::OUR_IMPL) {
+        // Initialize histogram memory for our implementation
+        const uint32_t NUM_BINS = 1 << 8;
+        const uint32_t hist_size = NUM_BINS * P::GRID_SIZE;
+        
+        cudaMalloc((uint32_t**)&d_histogram, sizeof(uint32_t) * hist_size);
+        cudaMalloc((uint32_t**)&d_histogram_transposed, sizeof(uint32_t) * hist_size);
+        cudaMalloc((uint32_t**)&d_hist_out, sizeof(uint32_t) * hist_size);
+        
+        cudaMemset(d_histogram, 0, sizeof(uint32_t) * hist_size);
+        cudaMemset(d_histogram_transposed, 0, sizeof(uint32_t) * hist_size);
+        cudaMemset(d_hist_out, 0, sizeof(uint32_t) * hist_size);
+    }
+
     cudaDeviceSynchronize();
     gpuAssert(cudaPeekAtLastError());
 
@@ -37,85 +112,13 @@ void runCub(
     gettimeofday(&t_start, NULL);
 
     for (int i = 0; i < GPU_RUNS; i++) {
-        CUBSortKernel<T, BLOCK_SIZE, ITEMS_PER_THREAD>
-            <<<GRID_SIZE, BLOCK_SIZE>>>(
-                d_in, 
-                d_out, 
-                size
-        );
-    }
-    cudaDeviceSynchronize();
-    gpuAssert(cudaPeekAtLastError());
-
-    gettimeofday(&t_end, NULL);
-    timeval_subtract(&t_diff, &t_end, &t_start);
-    elapsed = (t_diff.tv_sec * 1e6 + t_diff.tv_usec) / GPU_RUNS;
-
-    printf("CUB Block Sort Kernel runs in: %lu microsecs\n", elapsed);
-
-    // Calculate and print bandwidth and latency
-    double gigabytes = (double)(size * sizeof(T)) / (1024 * 1024 * 1024);
-    double seconds = elapsed / 1e6;
-    double bandwidth = gigabytes / seconds;
-    printf("GB processed: %.2f\n", gigabytes);
-    printf("Bandwidth: %.2f GB/sec\n", bandwidth);
-    printf("Latency: %.2f microsecs\n", elapsed);
-}
-
-
-// ... existing code ...
-
-template<typename T, int GRID_SIZE, int BLOCK_SIZE, int ITEMS_PER_THREAD>
-__host__ void runOurImpl(
-    T* d_in, 
-    T* d_out, 
-    int size
-) {
-    // Calculate grid size based on input size and elements per thread
-    const uint32_t NUM_BINS = 1 << 8;
-    const uint32_t hist_size = NUM_BINS * GRID_SIZE;
-
-    // Allocate histogram memory
-    uint32_t* d_histogram;
-    uint32_t* d_histogram_transposed;
-    uint32_t* d_hist_out;
-    
-    cudaMalloc((uint32_t**)&d_histogram, sizeof(uint32_t) * hist_size);
-    cudaMalloc((uint32_t**)&d_histogram_transposed, sizeof(uint32_t) * hist_size);
-    cudaMalloc((uint32_t**)&d_hist_out, sizeof(uint32_t) * hist_size);
-    
-    cudaMemset(d_histogram, 0, sizeof(uint32_t) * hist_size);
-    cudaMemset(d_histogram_transposed, 0, sizeof(uint32_t) * hist_size);
-    cudaMemset(d_hist_out, 0, sizeof(uint32_t) * hist_size);
-
-    // Dry run
-    CountSort<T, GRID_SIZE, BLOCK_SIZE, 16>(
-        d_in,
-        d_out,
-        d_histogram,
-        d_histogram_transposed,
-        d_hist_out,
-        uint32_t(size),
-        uint32_t(0)
-    );
-    cudaDeviceSynchronize();
-    gpuAssert(cudaPeekAtLastError());
-
-    // Benchmark
-    unsigned long int elapsed;
-    struct timeval t_start, t_end, t_diff;
-    gettimeofday(&t_start, NULL);
-
-    for (int i = 0; i < GPU_RUNS; i++) {
-        CountSort<T, GRID_SIZE, BLOCK_SIZE, 16>(
-            d_in,
-            d_out,
-            d_histogram,
-            d_histogram_transposed,
-            d_hist_out,
-            uint32_t(size),
-            uint32_t(0)
-        );
+        if (impl == SortImplementation::CUB) {
+            CUBSortKernel<typename P::ElementType, P::BLOCK_SIZE, P::Q>(
+                d_in, d_out, size
+            );
+        } else {
+            RadixSortKer<P>(d_in, d_out, size);
+        }
     }
 
     cudaDeviceSynchronize();
@@ -125,118 +128,102 @@ __host__ void runOurImpl(
     timeval_subtract(&t_diff, &t_end, &t_start);
     elapsed = (t_diff.tv_sec * 1e6 + t_diff.tv_usec) / GPU_RUNS;
 
-    printf("Our Implementation runs in: %lu microsecs\n", elapsed);
+    printf("%s runs in: %lu microsecs\n", 
+        impl == SortImplementation::CUB ? "CUB Block Sort Kernel" : "Our Implementation",
+        elapsed);
 
     // Calculate and print bandwidth and latency
-    double gigabytes = (double)(size * sizeof(T)) / (1024 * 1024 * 1024);
+    double gigabytes = (double)(size * sizeof(typename P::ElementType)) / (1024 * 1024 * 1024);
     double seconds = elapsed / 1e6;
     double bandwidth = gigabytes / seconds;
     printf("GB processed: %.2f\n", gigabytes);
     printf("Bandwidth: %.2f GB/sec\n", bandwidth);
     printf("Latency: %.2f microsecs\n", elapsed);
 
-    // Clean up
-   {
-        cudaFree(d_histogram);
-        cudaFree(d_histogram_transposed);
-        cudaFree(d_hist_out);
+    // Clean up histogram memory if using our implementation
+    if (impl == SortImplementation::OUR_IMPL) {
+        if (d_histogram) cudaFree(d_histogram);
+        if (d_histogram_transposed) cudaFree(d_histogram_transposed);
+        if (d_hist_out) cudaFree(d_hist_out);
     }
+
+    return elapsed;
 }
 
-
-template<class T, int TL, int NELMS>
-void runAll ( int SIZE ) {
-
-    srand(2006);
-
-    const int BLOCK_SIZE = 256;
-    const int GRID_SIZE = (SIZE + (BLOCK_SIZE * NELMS - 1)) / (BLOCK_SIZE * NELMS);
- 
-    // 1. allocate host memory for the two arrays
-    unsigned long long mem_size = sizeof(T) * SIZE;
-    T* h_in = (T*) malloc(mem_size);
-    T* h_out = (T*) malloc(mem_size);
- 
-    // 2. allocate device memory
-    T* d_in;
-    T* d_out;
-    cudaMalloc((void**) &d_in, mem_size);
-    cudaMalloc((void**) &d_out, mem_size);
- 
-    // 3. initialize host memory
-    randomInit<T>(h_in, SIZE, 100);
-    
-    // 4. copy host memory to device
-    cudaMemcpy(d_in, h_in, mem_size, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_out, h_out, mem_size, cudaMemcpyHostToDevice);
-
-
-    printf("Size is: %d\n", SIZE);
-
-    runCub<T, GRID_SIZE, BLOCK_SIZE, NELMS>( d_in, d_out, SIZE );
-
-    cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
-
-
-
-    // we allocate the new memory for our implementation
-    T* d_out_2;
-    cudaMalloc((void**)&d_out_2, mem_size);
-    cudaMemset(d_out_2, 0, mem_size);
-
-    
-    // clear up memory
-    cudaFree(d_out);
-
-    // the last generic parameter means something different here
-    runOurImpl<T, GRID_SIZE, BLOCK_SIZE, NELMS>( 
-        d_in, 
-        d_out_2, 
-        SIZE
-    );
-
-
-    free(h_in);
-    free(h_out);
-    cudaFree(d_in);
-    cudaFree(d_out_2);
-}
 
 /////////////////////////////////////////////////////////
 // Program main
 /////////////////////////////////////////////////////////
  
-int main (int argc, char * argv[]) {
-    if (argc != 2) {
-        printf("Usage: %s size\n", argv[0]);
+int main(int argc, char* argv[]) {
+    if (argc != 4) {
+        printf("Usage: %s input.data [u32|u64|u16|u8] [size]\n", argv[0]);
         exit(1);
     }
-    const int SIZE = atoi(argv[1]);
 
-    printf("Running GPU-Parallel Versions (Cuda) of MMM\n");
+    std::string input_type = argv[2];
+    const int SIZE = atoi(argv[3]);
+    ArrayData array_data;
+    
+    if (TYPE_MAP.find(input_type) == TYPE_MAP.end()) {
+        printf("Invalid data type: %s\n", input_type.c_str());
+        exit(1);
+    }
 
-    // Define constants for template parameters
-    const int BLOCK_SIZE = 256;
-    const int ITEMS_PER_THREAD = 22;
-    const int GRID_SIZE = (SIZE + (BLOCK_SIZE * ITEMS_PER_THREAD - 1)) / (BLOCK_SIZE * ITEMS_PER_THREAD);
- 
+    if (input_type == "u32") {
+        array_data = readDataFile<uint32_t>(argv[1]);
+    } else if (input_type == "u64") {
+        array_data = readDataFile<uint64_t>(argv[1]);
+    } else if (input_type == "u16") {
+        array_data = readDataFile<uint16_t>(argv[1]);
+    } else if (input_type == "u8") {
+        array_data = readDataFile<uint8_t>(argv[1]);
+    }
+
+    printf("Running GPU-Parallel Versions (Cuda) of Radix Sort\n");
+    printf("Input size: %ld\n", array_data.size);
+
     // Allocate device memory
-    uint32_t mem_size = sizeof(uint32_t) * SIZE;
+    uint32_t mem_size = sizeof(array_data.type) * array_data.size;
     uint32_t* d_in;
     uint32_t* d_out;
     cudaMalloc((void**)&d_in, mem_size);
     cudaMalloc((void**)&d_out, mem_size);
 
-    // Initialize memory if needed
-    cudaMemset(d_in, 0, mem_size);
+    // Copy input data to device
+    cudaMemcpy(d_in, array_data.data, mem_size, cudaMemcpyHostToDevice);
     cudaMemset(d_out, 0, mem_size);
 
     // Run CUB implementation
-    runCub<uint32_t, 128, 256, 22>(d_in, d_out, SIZE);  // Using fixed grid size of 128
+    const uint32_t BLOCK_SIZE = 256;
+    const uint32_t T = 32;
+    const uint32_t lgH = 8;
+    const uint32_t Q = 22;
+
+    using P = Params<
+        uint32_t, 
+        uint32_t, 
+        Q, 
+        lgH, 
+        ((SIZE + (BLOCK_SIZE * Q - 1)) / (BLOCK_SIZE * Q)),
+        BLOCK_SIZE, 
+        T
+    >;
+
+    double elapsed = runSort<P>(
+        d_in, 
+        d_out, 
+        SIZE, 
+        SortImplementation::CUB
+    );
 
     // Clean up
     cudaFree(d_in);
     cudaFree(d_out);
+    free(array_data.data);
+    
+    printf("%f\n", elapsed);
+    return 0;
 }
 
 

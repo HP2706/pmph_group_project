@@ -21,7 +21,7 @@ template<typename T>
 void deviceRadixSortKernel(
     T* d_keys_in, 
     T* d_keys_out, 
-    int num_items
+    int SIZE
 ) {
     // No need for initial copy since d_keys_in already contains the input data
     
@@ -32,17 +32,23 @@ void deviceRadixSortKernel(
     // its a bit weird that we need to call this twice but 
     // it is necessary for cub to allocate the correct amount of memory
     cub::DeviceRadixSort::SortKeys(
-        d_temp_storage, temp_storage_bytes,
-        d_keys_in, d_keys_out,
-        num_items);
+        d_temp_storage, 
+        temp_storage_bytes,
+        d_keys_in, 
+        d_keys_out,
+        SIZE
+    );
 
     cudaMalloc(&d_temp_storage, temp_storage_bytes);
 
     // Perform the sort
     cub::DeviceRadixSort::SortKeys(
-        d_temp_storage, temp_storage_bytes,
-        d_keys_in, d_keys_out,
-        num_items);
+        d_temp_storage, 
+        temp_storage_bytes,
+        d_keys_in, 
+        d_keys_out,
+        SIZE
+    );
 
     cudaFree(d_temp_storage);
 }
@@ -103,11 +109,6 @@ int callCubSort() {
     cudaMalloc(&d_keys_in, NUM_ITEMS * sizeof(int));
     cudaMalloc(&d_keys_out, NUM_ITEMS * sizeof(int));
 
-
-    if (checkSorted(h_keys, NUM_ITEMS)) {
-        printf("keys should not be sorted pre-sort\n");
-    }
-
     cudaMemcpy(d_keys_in, h_keys, NUM_ITEMS * sizeof(int), cudaMemcpyHostToDevice);
 
     deviceRadixSortKernel(d_keys_in, d_keys_out, NUM_ITEMS);
@@ -117,17 +118,12 @@ int callCubSort() {
         printf("CUDA error: %s\n", cudaGetErrorString(err));
     }
 
-
     cudaMemcpy(h_keys, d_keys_out, NUM_ITEMS * sizeof(int), cudaMemcpyDeviceToHost);
 
     for (int i = 0; i < 1000; i++) {
         printf("%d\n", h_keys[i]);
     }
 
-    //check if sorted
-    if (!checkSorted(h_keys, NUM_ITEMS)) {
-        printf("CubSort failed\n");
-    }
 
     // Cleanup
     delete[] h_keys;

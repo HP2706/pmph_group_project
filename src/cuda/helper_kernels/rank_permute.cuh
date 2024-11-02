@@ -24,7 +24,6 @@ __device__ void GlbToReg(
     const uint64_t glb_offs = blockIdx.x * QB;
     
     
-    // this causes an "illegal memory access" error
     copyFromGlb2ShrMem<T, Q>(
         glb_offs,
         N,
