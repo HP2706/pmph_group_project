@@ -7,3 +7,6 @@ debug.txt
 !*.*
 experimental_ker2.cuh
 *.txt
+*.in
+*.out
+src/futhark/lib

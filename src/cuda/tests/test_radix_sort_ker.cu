@@ -117,9 +117,9 @@ __host__ void test_radix_sort_ker(
 
     cudaMemcpy(h_out, d_out_debug, input_size * sizeof(typename P::ElementType), cudaMemcpyDeviceToHost);
 
-    for (int i = 0; i < input_size; i++) {
+    /* for (int i = 0; i < input_size; i++) {
         printf("line 113 h_out[%d]: %u\n", i, h_out[i]);
-    }
+    } */
 
     quickvalidatesortedarray<uint32_t>(input_size, h_out);
 
@@ -165,10 +165,6 @@ __host__ void test_radix_sort_ker(
     // copy results back to host
     cudaMemcpy(cub_h_out, cub_d_out, input_size * sizeof(typename P::ElementType), cudaMemcpyDeviceToHost);
     
-    /*for (int i = 0; i < input_size; i++) {
-        printf("cub_h_out[%d]: %u\n", i, cub_h_out[i]);
-    }*/
-
     
     std::remove("cub_sort_output.txt");
 
