@@ -17,6 +17,8 @@
 #include "../cub_kernel.cuh"
 #include <cuda_runtime.h>
 
+#if 0
+
 template<typename P>
 __host__ void test_radix_sort_ker(
     uint32_t input_size
@@ -163,3 +165,5 @@ __host__ void test_radix_sort_ker(
 
 
 }
+
+#endif

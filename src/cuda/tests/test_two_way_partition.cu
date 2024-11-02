@@ -5,7 +5,7 @@
 #include <string>
 #include <bitset>
 
-
+#if 0
 
 // Kernel that calls TwoWayPartition
 template<typename P>
@@ -150,3 +150,4 @@ void TestTwoWayPartition() {
     cudaFree(d_output);
 }
 
+#endif

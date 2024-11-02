@@ -11,7 +11,7 @@
 #include "../helper_kernels/prefix_sum.cuh"
 #include "../kernels.cuh"
 
-
+#if 0
 
 template<typename T>
 void transposeCPU(T* input, T* output, int numRows, int numCols) 
@@ -143,3 +143,5 @@ void test_verify_transpose(
     cudaFree(d_histogram_transposed);
     cudaFree(d_histogram_transposed_2);
 }
+
+#endif

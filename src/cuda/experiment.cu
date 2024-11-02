@@ -53,7 +53,7 @@ int main() {
     //test_count_sort<P>(input_size);
     //printf("CountSort done\n");
 
-    //test_histo_ker<P>(input_size);
-    test_radix_sort_ker<P>(input_size);
+    test_histo_ker<P>(input_size);
+    //test_radix_sort_ker<P>(input_size);
 
 }

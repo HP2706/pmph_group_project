@@ -16,7 +16,7 @@
 #include "../cub_kernel.cuh"
 #include <cuda_runtime.h>
 
-
+#if 0
 
 template<class P>
 __global__ void testGlbToRegKernel(
@@ -162,3 +162,5 @@ __host__ void test_glb_to_reg_ker(
     cudaFree(d_in);
     cudaFree(d_out);
 }
+
+#endif

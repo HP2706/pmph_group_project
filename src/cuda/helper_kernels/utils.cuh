@@ -82,10 +82,8 @@ bool __host__ __device__ isBitUnset(int pos, T val) {
     return (val & (1 << pos)) == 0;
 }
 
-
-
 template<class T, int lgH>
-int __device__ getBits(int pos, T val) {
+int __device__ getDigit(int pos, T val) {
     return (val >> pos) & ((1 << lgH) - 1);
 }
 
