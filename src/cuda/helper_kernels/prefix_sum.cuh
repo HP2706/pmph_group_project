@@ -95,28 +95,34 @@ void tiledTranspose(
 // computes the scan across buckets via transpose -> scan -> transpose 
 template<class P>
 void scan_buckets(
-    uint16_t* arr,
-    uint16_t* arr_t,
+    uint64_t* arr,
+    uint64_t* arr_t,
     uint64_t* arr_t_scanned, 
     uint64_t* arr_t_scanned_t // the end result is stored here
 ) {
+
+    // we start with having our array in row-major format where 
+    // where each row is the histogram of a given block
+    // we transpose to get column-major order and compute the scan
+    // then we transpose back to get the row-major format back
 
     // we allocate a temporary buffer for the 
     uint64_t* d_tmp_buf;
     // NUM_BLOCKS_SCAN is 1024 the largest number of blocks we can have on cuda gpu
     cudaMalloc(&d_tmp_buf, NUM_BLOCKS_SCAN * sizeof(uint64_t));
 
-    tiledTranspose<uint16_t, P::TILE_SIZE>(
+    tiledTranspose<uint64_t, P::TILE_SIZE>(
         arr, 
         arr_t, 
-        P::H, // width is the height of the input matrix
-        P::NUM_BLOCKS // height is the number of blocks we can have on cuda gpu
+        P::NUM_BLOCKS, // height is the number of blocks we can have on cuda gpu
+        P::H // width is the height of the input matrix
     );
 
-    // we add uint16_t elemens and store the result in uint64_t
-    scanInc<FusedAddCast<uint16_t, uint64_t>, P::Q>(
-        P::B,
-        P::NUM_BLOCKS,
+    // we add uint64_t elemens and store the result in uint64_t
+    //FusedAddCast<uint64_t, uint64_t>
+    scanInc<Add<uint64_t>, P::Q>(
+        P::BLOCK_SIZE,
+        P::NUM_BLOCKS*P::H,
         arr_t_scanned, // output array
         arr_t, // input array
         d_tmp_buf // temporary buffer of size NUM_BLOCKS_SCAN
@@ -126,10 +132,11 @@ void scan_buckets(
     tiledTranspose<uint64_t, P::TILE_SIZE>(
         arr_t_scanned,
         arr_t_scanned_t,
-        P::NUM_BLOCKS,
-        P::H
+        P::H,
+        P::NUM_BLOCKS
     );
 
+    cudaFree(d_tmp_buf);
 
 }
 
