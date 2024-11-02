@@ -9,7 +9,6 @@
 #define RUNS_GPU            100
 #define RUNS_CPU            5
 #define NUM_BLOCKS_SCAN     1024
-#define ELEMS_PER_THREAD    6 // this is for pbb_kernels.cuh
 #define LLC                 41943040 // number taken from assignment 3-4
 #define LLC_FRAC (3.0 / 7.0)
 #define WARP_COUNT 32 // renamed from WARP to ensure compatibility with the cub library

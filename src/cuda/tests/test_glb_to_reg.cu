@@ -57,7 +57,7 @@ bool verifyGlbToReg(const typename P::ElementType* arr_in, const typename P::Ele
     bool success = true;
     const uint32_t QB = P::BLOCK_SIZE * P::Q;
 
-    for (uint32_t bid = 0; bid < P::GRID_SIZE; ++bid) 
+    for (uint32_t bid = 0; bid < P::NUM_BLOCKS; ++bid) 
     {
         for (uint32_t tid = 0; tid < P::BLOCK_SIZE; ++tid) 
         {
@@ -109,7 +109,7 @@ __host__ void test_glb_to_reg_ker(
     size_t shared_mem_size = P::BLOCK_SIZE * P::Q * sizeof(ElementType);
 
     //Launch kernel
-    testGlbToRegKernel<P><<<P::GRID_SIZE, P::BLOCK_SIZE, P::QB*sizeof(typename P::ElementType)>>> 
+    testGlbToRegKernel<P><<<P::NUM_BLOCKS, P::BLOCK_SIZE, P::QB*sizeof(typename P::ElementType)>>> 
     (
         d_in,
         d_out,

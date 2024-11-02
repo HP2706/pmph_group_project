@@ -11,17 +11,22 @@
 #include "../helper_kernels/prefix_sum.cuh"
 #include "../kernels.cuh"
 
-#if 0
+#if 1
 
 template<typename T>
-void transposeCPU(T* input, T* output, int numRows, int numCols) 
+void transposeCPU(
+    T* input, 
+    T* output, 
+    uint32_t height, 
+    uint32_t width
+) 
 {
-    for (int i = 0; i < numRows; ++i) 
+    for (uint32_t i = 0; i < width; ++i) 
     {
-        for (int j = 0; j < numCols; ++j) 
+        for (uint32_t j = 0; j < height; ++j) 
         { 
-            T inputVal = input[i * numCols + j];
-            output[j * numRows + i] = inputVal; 
+            T inputVal = input[i * height + j];
+            output[j * width + i] = inputVal; 
         }
     }
 }
@@ -32,14 +37,14 @@ void verifyTranspose(
     T* cpuInput, 
     T* cpuOutput, 
     T* gpuOutput, 
-    int numRows, 
-    int numCols
+    uint32_t height, 
+    uint32_t width
 )
 {
-    transposeCPU<T>(cpuInput, cpuOutput, numRows, numCols);
+    transposeCPU<T>(cpuInput, cpuOutput, height, width);
     bool success = true;
     uint32_t mismatchCount = 0;
-    for (int i = 0; i < numRows * numCols; ++i) 
+    for (uint32_t i = 0; i < width * height; ++i) 
     {
         if (cpuOutput[i] != gpuOutput[i]) 
         {
@@ -57,7 +62,7 @@ void verifyTranspose(
     else 
     {
         std::cout << "Transpose verification failed.\n";
-        std::cout << "Mismatch count: " << mismatchCount << " of " << numRows * numCols << " elements.\n";
+        std::cout << "Mismatch count: " << mismatchCount << " of " << width * height << " elements.\n";
     }
 }
 
@@ -70,7 +75,7 @@ void test_verify_transpose(
     static_assert(is_params<P>::value, "P must be a Params instance");
     // Calculate grid size based on input size and elements per thread
 
-    uint32_t hist_size = P::H * P::GRID_SIZE;
+    uint32_t hist_size = P::H * P::NUM_BLOCKS;
     
     // ptr allocations
     
@@ -114,26 +119,33 @@ void test_verify_transpose(
         cpu_h_histogram_transposed[i] = 0;
     }
 
-    tiled_transpose_kernel<UintType, P::T>(
+    tiledTranspose<UintType, P::TILE_SIZE>(
         d_histogram,
         d_histogram_transposed,
-        P::H,
-        P::GRID_SIZE
+        P::NUM_BLOCKS,
+        P::H
     );
 
     cudaMemcpy(h_histogram_transposed, d_histogram_transposed, sizeof(UintType) * hist_size, cudaMemcpyDeviceToHost);
-    verifyTranspose<UintType>(h_histogram, cpu_h_histogram_transposed, h_histogram_transposed, P::H, P::GRID_SIZE);
+    verifyTranspose<UintType>(
+        h_histogram, 
+        cpu_h_histogram_transposed, 
+        h_histogram_transposed,
+        P::H, // width
+        P::NUM_BLOCKS // height
+    );
 
-    tiled_transpose_kernel<UintType, P::T>(
+    tiledTranspose<UintType, P::TILE_SIZE>(
         d_histogram_transposed,
         d_histogram_transposed_2,
-        P::GRID_SIZE,
-        P::H
+        P::H, //width
+        P::NUM_BLOCKS //height
     );
 
     cudaMemcpy(h_histogram_transposed_2, d_histogram_transposed_2, sizeof(UintType) * hist_size, cudaMemcpyDeviceToHost);
     printf("\n");
 
+    printf("check double transpose equals original\n");
     // check if the double transposed histogram is the same as the original histogram
     validate<UintType>(h_histogram_transposed_2, h_histogram, hist_size);
     
