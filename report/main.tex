@@ -45,14 +45,14 @@ Radix sort is a very important and efficient sorting algorithm, in this section 
 \item Radix sort: \\
 The basic idea of radix sort is to sort an integer into digits of the form $2^r$ consisting of r bits. Then the list is sorted for each digit until all digits have been traversed and the list is fully sorted. The main assumptions of radix sort is that all integers in the input list are of fixed length, and can all be represented as bits, that the integer or string can be split into digits/keys with a known and limited range, and that we have a stable sorting algorithm for each digit, such as counting sort. 
 \item Radix sort sequential: \\
-The sequential implementation iterates through the digits, r bits at a time. The simplest implementation does 1 bit at a time, but larger r can improve locality. Each digit m, has r bits, such that $m = 2^r$. Radix sort works by performing a counting sort on each set of digits, until all digits have been traversed. Counting sort follows the following syntax: 
+The sequential implementation iterates through the digits, r bits at a time. The simplest implementation does 1 bit at a time, but larger r can improve locality. Each digit m, has r bits, such that $m = 2^r$. Radix sort works by performing a counting sort or other stable sort on each set of digits, until all digits have been traversed. Counting sort follows the following syntax: 
 \begin{figure} [H]
     \includegraphics[width=0.5\linewidth]{images/count_sort.PNG}
     \caption{Counting Sort \citep{zagharadixvector}}
     \label{fig:enter-label}
 \end{figure}.
 
-Where Histogram-Keys counts the number of elements in a bucket for each unique digit. Scan-Buckets, scan the buckets and returns the position at which the first element of a subset having a certain digit is to be placed, that is, the offset. Finally, Rank-and-permute matches the digit value with the bucket offset and iterates through each "sub bucket" to order the elements by their digit. After this, counting sort is repeated on each subset of digits until the whole list is sorted.
+Where Histogram-Keys counts the number of elements in a bucket for each unique digit. Scan-Buckets, scan the buckets and returns the position at which the first element of a subset having a certain digit is to be placed, that is, the offset. Finally, Rank-and-permute matches the digit value with the bucket offset and iterates through each "sub bucket" to order the elements by their digit. After this, counting sort, or another sort, is repeated on each subset of digits until the whole list is sorted.
 
 \item For parallelization of radix sort, similar ideas are used, however, there are a few key differences. One such method is discussed in \citep{zagharadixvector}. With p processors, the input list is split into p sub-lists for each processor to work on. Each processor performs Histogram-keys locally to create local histograms, then a global scan is performed across buckets to calculate the global offset, Rank and Permute can then be performed locally and written to global memory as Rank and Permute takes in the offset, and therefore there are no dependencies across processors \citep{zagharadixvector}. 
 
@@ -88,21 +88,20 @@ def radix [n] `t (f: t -> u32) (xs: [n]t): [n]t =
 (10)    loop xs for i < 32 do radix_bit f xs i                     -- D = O(log n), W = O(n)
 \end{lstlisting}
 
-This implementation is from \href{https://futhark-lang.org/examples/radix-sort-key.html}{radix-sort-key (futhark-lang.org)}, and applied to each bit of 32 bit unsigned integers, as radix sort requires each digit to be in the range of 0 to m-1. The radix\_bit part of the algorithm takes in a bit. The bits are stored in bits (1), bits\_neg (2) contains the bits converted to their compliment, offs (3), get the offsets of the bits by calculating how many 0 bits there are, which is what bits\_neg is used for. The bits array is similar to what histogram keys does, when considering a digit of size 2, as in this case. Idxs0 (4) finds the indices of elements with a bit of 0, while idxs1 (5) finds the indices of elements with a bit of 1, and idxs2 (6) concatenate those two lists. Indexes are then stored in idxs (7) assuming zero indexing, by subtracting 1 from every index. Then scatter (8) is used to distribute the elements to their corresponding location.
-\\
-Let us now consider the work depth complexity, for a list of length n, the work and depth complexity is written next to the code, where scan and reduce both have a depth complexity of O(log n), and all lines have O(n) work complexity, as they traverse n elements. While this work depth complexity might seem good on paper, this is a best case scenario, in which we always have n processors. More advanced methods deal with the distribution of the workload in a fashion more suited to the GPU, and this improving the overall speed and efficiency of the algorithm. 
+This implementation is from \href{https://futhark-lang.org/examples/radix-sort-key.html}{radix-sort-key (futhark-lang.org)}, and applied to each bit of 32 bit unsigned integers, as radix sort requires each digit to be in the range of 0 to m-1. The radix\_bit part of the algorithm takes in a bit. The bits are stored in bits (1), bits\_neg (2) contains the bits converted to their compliment, offs (3), get the offsets of the bits by calculating how many 0 bits there are, which is what bits\_neg is used for. Offs is similar to what histogram keys does, when considering a digit of size 2, as in this case. Idxs0 (4) finds the indices of elements with a bit of 0, while idxs1 (5) finds the indices of elements with a bit of 1, and idxs2 (6) concatenate those two lists. Indexes are then stored in idxs (7) assuming zero indexing, by subtracting 1 from every index. The idxs calculation contains the scan part of the algorithm. Then scatter (8) is used to distribute the elements to their corresponding location, like rank and permute would, but it does the operations in a slightly different way, while keeping the overall structure of radix sort and its syntax intact. 
+\\ \\
+Let us now consider the work depth complexity, for a list of length n, the work and depth complexity is written next to the code, where scan and reduce both have a depth complexity of O(log n), and all lines have O(n) work complexity, as they traverse n elements. While this work depth complexity might seem good on paper, this is a best case scenario, in which we always have n processors. More advanced methods deal with the distribution of the workload in a fashion more suited to the GPU, and this improves the overall speed and efficiency of the algorithm. 
 \end{itemize}
 
 \section{Fast parallel radix sort}
 
-Although \citep{zagharadixvector} was great at the time, our literature search provided several higher performing parallel radix sorts. The first implementation by Satish et. al. provides a significant speed up from previous methods using the following ground principles and distributing 4 bit digits per thread, 
+Although \citep{zagharadixvector} was great at the time, our literature search provided several higher performing parallel radix sorts. The first implementation by Satish et. al. provides a significant speed up from previous methods using the following ground principles.
 \begin{figure} [H]
     \centering
     \includegraphics[width=\linewidth]{report/images/satish.PNG}
     \caption{Satish steps \citep{satish}}
     \label{fig:enter-label}
-\end{figure}.
-They also proposed parallel local radix counting and pre-sorting as well as global radix ranking and coalesced global shuffling\citep{satish}Building off these concepts, Ha. et. al proposed two improvements, implicit counting and a mixed-data structure with 4 elements, that is 2-bit digits.
+\end{figure} Furthermore, parallel local radix counting and pre-sorting as well as global radix ranking and coalesced global shuffling was also done by \citep{satish}. Building off these concepts, Ha. et. al proposed two improvements, implicit counting and a mixed-data structure with 4 elements, that is 2-bit digits.
 \begin{itemize}
 \item Implicit counting \\
 Uses bit shifting to create a 32-bit register for radix value 0, 1 and 2. With the count of 0 assigned to bits from 0 to 9, the count of 1 assigned to bit values from 10-19, and the count of 2 assigned to bits from 20-29. The implicit count is: $$impl_{cnt} = cnt_0 + (cnt_1 \ll 10) + (cnt_2 \ll 20)$$
@@ -122,8 +121,8 @@ Thus implicit counting reduces the count operations from 4 in Satish. et. al to 
     \includegraphics[width=\linewidth]{images/mixed-data.PNG}
     \caption{Mixed data method \citep{ha2010implicit}}
     \label{fig:enter-label}
-\end{figure}.
-Ha. et. al's hybrid data structure uses AoS and SoA, which reduces suboptimal coalesced scattering effects, and requires only one shuffle pass on the pre sorting data due to the structure \citep{ha2010implicit} 
+\end{figure}
+Ha. et. al's hybrid data structure uses AoS and SoA, which reduces suboptimal coalesced scattering effects, and requires only one shuffle pass on the pre sorting data due to the structure  
 \\
 We have decided to attempt to implement the Ha. et. al algorithm
 \item Pseudocode
@@ -177,13 +176,19 @@ We have decided to attempt to implement the Ha. et. al algorithm
      * Work: O(n * #passes), Depth: O(#passes * (log B + log P) = O(#passes * (log B + log (n/B)))
 \end{lstlisting}
 
-Additionally, the algorithm has bank conflict-free access, storing in different arrays to avoid concurrent access, 
-Mapping of integers from [a,b to 0, b-a] for integers, and floats by mapping from [a,b] to [0.5, 1] to change from 32 bit to 24 bit. 30\% performance increase. It is an approximation but it is precise enough.
+
+Additionally, the algorithm has bank conflict-free access, and stores in different arrays to avoid concurrent access. It also does 
+mapping of integers from [a,b to 0, b-a], and of floats by mapping from [a,b] to [0.5, 1] to change from 32 bit to 24 bit, giving a 30\% performance increase. It is an approximation, however, it is precise enough for the implementation. Following the work depth complexity, it is virtually the same for both implementations, however, as stipulated before, the sequential approach is unable to utilize the parallel blocks and will therefore be a lot slower. 
+
+Finally, we expect the algorithm to be well suited for the gpu single instruction multiple data model(SIMT) as the algorithm which in its essence is a composition of histogram->scan->scatter maps naturally to the GPU's execution model as these exhibit regular access patterns, avoiding the irregular uncoalesced  access patterns and thread divergence typical of comparison-based sorts. 
+
+\citep{ha2010implicit} 
 
 \section{In depth cuda implementation}
 
-Radix sort can viewed as a sequential application of countsort across different bit intervals, each iteration maintaining the invariant that
-the array is sorted with respect to the last bit.
+We implement the algorithm by \citep{ha2010implicit} with some minor modifications. We process 8 bits at a time like nvidia´s cub implementation. 
+
+Radix sort can viewed as a sequential application of counting sort across different bit intervals, each iteration maintaining the invariant that the array is sorted with respect to the last bit.
 
 We can break countsort into 4 fundamental kernels.
 
@@ -200,46 +205,42 @@ We follow the possible good values recommended, thus $Q = 22, lgH = 8, H = 256, 
 The parallel cuda-implementation of the histogram processes $Q$ elements per thread. 
 We decided to use shared memory while processing the histogram, as otherwise we would have to access global memory many times, which is slower than first using shared memory, and then writing the final histogram to global memory.
 Unfortunately we have to use atomic adds for incrementing our histogram buckets which hampers performance due to contention problems as our histograms have few keys. This is done $Q$ times per thread, which is not ideal, as atomic adds impacts performance negatively, which likely affects our results as seen in the last section.
-Notably for the histogram we sort each element based on each bit, instead of the regular approach of sorting by each digit. This approach is both more memory efficient and faster.(TODO:justification?? i dont understand what is meant here)
+Notably for the histogram we sort each element based on each bit, instead of the regular approach of sorting by each digit. This approach is both more memory efficient and faster.
 
 \subsection{Transpose kernel}
 
-as part of the position computation across buckets we need to compute and update of the ith block and jth key as:
+As part of the position computation across buckets we need to compute and update of the ith block and jth key as:
 \[
 Buckets[i,j]_{after} = \sum_{k=0}^{p-1} \sum_{m=0}^{j-1} Buckets[k,m] + \sum_{k=0}^{i-1} Buckets[k,j]
 \]
 
 doing this naively would lead to uncoalesced access as buckets[i, j] and buckets[i+1, j] will be H apart in memory. As we store our matrix in row-major order. In order to efficiently and in a coalesced manner scan our histograms(one for each block) we transpose our matrix such that buckets[i, j] and buckets[i+1, j] will now only be one element apart.
 The transpose kernel is relatively simple and is heavily inspired by the one presented in the week 2 assignment. 
-We read coalesced from global memory to shared memory(at miniscule performance cost) then read uncoalesced in shared memory and write back coalesced to global memory.
-
-as per Cosmin's slides
+We read coalesced from global memory to shared memory(at miniscule performance cost) then read uncoalesced in shared memory and write back coalesced to global memory. As per Cosmin's slides, we use this transpose kernel twice, once before scanning and then again after scanning.
 \begin{figure}
   \includegraphics[width=1\textwidth]{images/coalesced_transpose.png}
   \caption{slides/L6-locality.pdf}
 \end{figure}
 
 
-We use this transpose kernel twice, once before scanning and then again after scanning.
-
 \subsection{Scan kernel}
-The scan kernel is called on the transposed matrix to compute the indices for the rand-and-permute kernel. 
+The scan kernel is called on the transposed matrix to compute the indices for the rank-and-permute kernel. 
 We use inclusive scan that performs scan at both the block and warp level, at both levels exploiting the fact that the work depth of scan over an associate binary operator(+) is log(n). We use the efficient implementation of block and warp level scan from assignment2.
 
 \subsection{Rank-and-permute kernel}
 
 This kernel is the most complex and requires deliberate usage of the memory hiearchy to run efficiently on gpus.
-First each blocks loads Q*BlOCK\_SIZE elements into shared memory, from there each thread loads its elements from shared memory into its registers.
+First each blocks loads Q*BLOCK\_SIZE elements into shared memory, from there each thread loads its elements from shared memory into its registers.
 
-next we compute the two-way-partioning sequentially over lgh bits. 
+Next we compute the two-way-partioning sequentially over lgh bits. 
 Each thread computes a sequential reduction over its Q elements checking if the i'th bit of a value is set or unset and stores this in shared memory. 
 next compute an inclusive scan at the block level computing the cumulative sum of unset bits. 
 
-each thread then reads from shared memory back to local memory the cumulative sum at their index. 
+Each thread then reads from shared memory back to local memory the cumulative sum at their index. 
 In this way each thread obtains the necessary information for correctly ordering its elements in shared memory. 
 At last each thread reads its new elements from shared back to local memory. And this process is repeated lgH times.
 
-After the two-way partitioning each thread write its q elements to shared memory and then each block writes its QB elements from shared to global memory. 
+After the two-way partitioning each thread writes its q elements to shared memory and then each block writes its QB elements from shared to global memory. 
 Note that we do not have to perform any inter-block communication as all position information has been communicated via the scan across blocks.
 We include the inner loop over lgh, the most interessting aspects of the kernel below.
 
@@ -329,14 +330,13 @@ In terms of basic blocks of parallel programming, the rank and permute kernel co
 \subsection{Sorting the whole array}
 
 
-In order to sort the entire array we apply countsort in a loop. 
+In order to sort the entire array we apply counting sort in a loop. 
 This means our sorting algorithm first takes in a completely unsorted array, then applies all the kernels to it. 
 After the rank-and-permute kernel, we overwrite the input array we gave to the histogram and build a new array on the result of the rank-and-permute kernel. 
-This process is then repeated, where the histogram is build on the rank-and-permute output, for however many bits our elements in our array have. 
-As we are using 32 bit numbers, it means we launch the kernels 32 times to obtain a fully sorted array. 
-Consequently, this can have an effect on the performance of our sorting and some papers like \cite{satish} suggest that for instead of building a histogram for each bit, it was more beneficial if we processed four bits at a time, which would lead to only launching the kernels 8 times for 32 bit number. 
-at each iteration except for the last one, we swap our input and output buffer.
-
+This process is then repeated, where the histogram is built on the rank-and-permute output, for however many bits our elements in our array have. 
+Using 32 bit integers would mean that we launched the kernels 32 times to obtain a fully sorted array. 
+Consequently, this can have an effect on the performance of our sorting, \cite{satish}  and \cite{ha2010implicit} suggest that instead of building a histogram for each bit, it is more beneficial to process 4 bits at a time, which leads to only launching the kernels 8 times for 32 bit integers without mapping as explained in part 2. Which is what we do. 
+At each iteration except for the last one, we swap our input and output buffer.
 While radix-sort does allow for stable sort in a sequential version, our parallel implementation very much depends on which thread accesses memory first for equal elements, thus it is not stable. Consequently, it is not deterministic either. 
 
 \section{Performance evaluation}
