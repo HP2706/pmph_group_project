@@ -104,9 +104,6 @@ double runSort(
         RadixSortKer<P>(d_in, d_out, size);
     }
 
-    printf("Done with warmup\n");
-
-
     for (int i = 0; i < GPU_RUNS; i++) {
         if (impl == SortImplementation::CUB) {
             cub::DeviceRadixSort::SortKeys(
@@ -123,6 +120,7 @@ double runSort(
         }
     }
 
+
     cudaDeviceSynchronize();
     gpuAssert(cudaPeekAtLastError());
 
@@ -134,15 +132,22 @@ double runSort(
         impl == SortImplementation::CUB ? "CUB Block Sort Kernel" : "Our Implementation",
         elapsed);
 
+    typename P::ElementType* h_out = (typename P::ElementType*)malloc(size * sizeof(typename P::ElementType));
+    cudaMemcpy(h_out, d_out, size * sizeof(typename P::ElementType), cudaMemcpyDeviceToHost);
+    
+    std::ofstream outfile("cuda_results_2.txt");
+    for (int i = 0; i < size; i++) {
+        outfile << h_out[i] << "\n";
+    }
+    outfile.close();
+
     // Calculate and print bandwidth and latency
-    double gigabytes = (double)(size * sizeof(typename P::ElementType)) / (1024 * 1024 * 1024);
+    double gigabytes = (double)(size * sizeof(typename P::ElementType) * 8) / (1024 * 1024 * 1024);
     double seconds = elapsed / 1e6;
     double bandwidth = gigabytes / seconds;
-    printf("GB processed: %.2f\n", gigabytes);
-    printf("Bandwidth: %.2f GB/sec\n", bandwidth);
-    printf("Latency: %.2f microsecs\n", elapsed);
-
-
+    printf("GB processed: %f\n", gigabytes);
+    printf("Bandwidth: %f GB/sec\n", bandwidth);
+    printf("Latency: %f microsecs\n", elapsed);
     return elapsed;
 }
 
@@ -197,6 +202,16 @@ void runWithType(
     
     const int GRID_SIZE = (SIZE + (BLOCK_SIZE * Q - 1)) / (BLOCK_SIZE * Q);
     const SortImplementation radix_impl = impl == 0 ? SortImplementation::CUB : SortImplementation::OUR_IMPL;
+    
+    RadixSortKer<P>(d_in, d_out, SIZE);
+    cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
+
+    std::ofstream outfile("cuda_results.txt");
+    for (int i = 0; i < SIZE; i++) {
+        outfile << h_out[i] << "\n";
+    }
+    outfile.close();
+
     double elapsed = runSort<P>(
         d_in, 
         d_out, 

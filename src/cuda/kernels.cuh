@@ -138,7 +138,12 @@ __host__ void RadixSortKer(
     typename P::ElementType* output,
     int size
 ) {
-
+    // Allocate a separate buffer for intermediate results
+    typename P::ElementType* d_buffer;
+    cudaMalloc((void**) &d_buffer, sizeof(typename P::ElementType) * size);
+    // Copy initial input to buffer
+    cudaMemcpy(d_buffer, d_in, sizeof(typename P::ElementType) * size, cudaMemcpyDeviceToDevice);
+    
     uint16_t* d_hist;
     uint16_t* d_hist_transposed;
     uint64_t* d_hist_transposed_scanned;
@@ -162,11 +167,13 @@ __host__ void RadixSortKer(
 
     int bit_offs = 0;
 
+    typename P::ElementType* current_in = d_buffer;
+    typename P::ElementType* current_out = output;
 
     for (int i = 0; i < n_iter; i++) {
         CountSort<P>(
-            d_in, 
-            tmp_swap, // output
+            current_in,
+            current_out,
             d_hist, 
             d_hist_transposed, 
             d_hist_transposed_scanned_transposed,
@@ -177,36 +184,24 @@ __host__ void RadixSortKer(
             grid_size
         );
 
-        // increment the bit position
         bit_offs += P::lgH;
         
-        if (i < n_iter - 1) {  // Only swap for all but the last iteration
-            typename P::ElementType* tmp = d_in;
-            d_in = tmp_swap;
-            tmp_swap = tmp;
-        }
-
+        // Swap the buffers
+        typename P::ElementType* temp = current_in;
+        current_in = current_out;
+        current_out = temp;
 
         cudaDeviceSynchronize();
-        cudaError_t err = cudaGetLastError();
-        if (err != cudaSuccess) {
-            printf("count sort kernel failed at iteration %d: %s\n", i, cudaGetErrorString(err));
-            return;
-        }
-
+        gpuAssert(cudaGetLastError());
     }
 
-    cudaDeviceSynchronize();
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        printf("Radix sort kernel failed: %s\n", cudaGetErrorString(err));
-        return;
+    // If we ended with the result in the wrong buffer, copy it to output
+    if (current_in != output) {
+        cudaMemcpy(output, current_in, sizeof(typename P::ElementType) * size, cudaMemcpyDeviceToDevice);
     }
 
-    cudaDeviceSynchronize();
-    
-    cudaMemcpy(output, tmp_swap, sizeof(typename P::ElementType) * size, cudaMemcpyDeviceToDevice);
-
+    // Clean up
+    cudaFree(d_buffer);
     cudaFree(tmp_swap);
     cudaFree(d_hist);
     cudaFree(d_hist_transposed);

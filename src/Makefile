@@ -41,10 +41,10 @@ $(TEST_EXEC): $(TEST_SRC) $(HELPERS) $(KERNELS)
 
 # we call with inputs array size, block size, items per thread, n bits per key??
 
-SIZE ?= 10000
-TYPE ?= u32
+SIZE ?= 10000000
+TYPE ?= u64
 IMPL ?= 1
-MAX_VAL ?= 10000
+MAX_VAL ?= 100000
 run_gpu: $(EXEC_GPU)
 	./$(EXEC_GPU) $(TYPE) $(SIZE) $(IMPL) $(MAX_VAL)
 

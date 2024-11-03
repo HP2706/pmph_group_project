@@ -174,4 +174,12 @@ __host__ void testRadixSortKer(
     cudaMemcpy(cub_h_out, cub_d_out, input_size * sizeof(typename P::ElementType), cudaMemcpyDeviceToHost);
     quickvalidatecub<uint32_t>(input_size, cub_h_out);
     assertCubIsEqualToOurImplementation<uint32_t>(input_size, h_out, cub_h_out);
+
+
+    std::ofstream outfile("cuda_results.txt");
+    for (int i = 0; i < input_size; i++) {
+        outfile << h_out[i] << "\n";
+    }
+    outfile.close();
+
 }
