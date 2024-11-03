@@ -49,13 +49,57 @@ double runSort(
     gettimeofday(&t_start, NULL);
 
 
+    void* mem = NULL;
+    size_t len = 0;
+    
+    uint32_t startBit = 0;
+    uint32_t endBit = sizeof(typename P::ElementType) * 8; // 8 bits per byte 
+    
+    if (impl == SortImplementation::CUB) {
+        // Get size requirements for temporary storage
+        // its a bit weird that we need to call this twice but 
+        // it is necessary for cub to allocate the correct amount of memory
+        cub::DeviceRadixSort::SortKeys(
+            mem, 
+            len,
+            d_in, 
+            d_out,
+            size, 
+            startBit, 
+            endBit
+            );
+        cudaMalloc(&mem, len);
+    }
+    
+    if (impl == SortImplementation::CUB) {
+        cub::DeviceRadixSort::SortKeys(
+            mem, 
+            len, 
+            d_in, 
+            d_out, 
+            size, 
+            startBit, 
+            endBit
+        );
+        cudaDeviceSynchronize();
+        cudaError_t cub_err = cudaGetLastError();
+        if (cub_err != cudaSuccess) {
+            printf("cub sort kernel failed: %s\n", cudaGetErrorString(cub_err));
+            return -1.0f;
+        }
+    }
+
     // warmup
     if (impl == SortImplementation::CUB) {
-        deviceRadixSortKernel<typename P::ElementType>(
-            d_in,
+        cub::DeviceRadixSort::SortKeys(
+            mem, 
+            len,
+            d_in, 
             d_out,
-            size
-        );
+            size, 
+            startBit, 
+            endBit
+            );
     } else {
         RadixSortKer<P>(d_in, d_out, size);
     }
@@ -65,10 +109,14 @@ double runSort(
 
     for (int i = 0; i < GPU_RUNS; i++) {
         if (impl == SortImplementation::CUB) {
-            deviceRadixSortKernel<typename P::ElementType>(
-                d_in,
+            cub::DeviceRadixSort::SortKeys(
+                mem, 
+                len,
+                d_in, 
                 d_out,
-                size
+                size, 
+                startBit, 
+                endBit
             );
         } else {
             RadixSortKer<P>(d_in, d_out, size);
