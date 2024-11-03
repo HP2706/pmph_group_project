@@ -1,4 +1,0 @@
-data_type,dataset_size,microseconds,max_value,impl
-u64,1000,76238.000000,100000,cub
-u64,10000,77274.000000,100000,cub
-u64,100000,81631.000000,100000,cub

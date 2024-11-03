@@ -10,3 +10,4 @@ experimental_ker2.cuh
 *.in
 *.out
 src/futhark/lib
+*.nfs*

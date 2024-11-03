@@ -8943,7 +8943,7 @@ FUTHARK_FUN_ATTR int futrts_entry_main(struct futhark_context *ctx, struct membl
     bool index_certs_7630;
     
     if (!protect_assert_disj_7629) {
-        set_error(ctx, msgprintf("Error: %s%lld%s%lld%s\n\nBacktrace:\n%s", "Index [", (long long) tmp_7624, "] out of bounds for array of shape [", (long long) dz2080U_7040, "].", "-> #0  /prelude/array.fut:26:29-35\n   #1  futhark/lib/github.com/diku-dk/sorts/radix_sort.fut:31:24-36\n   #2  futhark/lib/github.com/diku-dk/sorts/radix_sort.fut:59:60-62\n   #3  futhark/bench_u64.fut:8:3-15\n   #4  futhark/bench_u64.fut:7:1-8:15\n"));
+        set_error(ctx, msgprintf("Error: %s%lld%s%lld%s\n\nBacktrace:\n%s", "Index [", (long long) tmp_7624, "] out of bounds for array of shape [", (long long) dz2080U_7040, "].", "-> #0  /prelude/array.fut:26:29-35\n   #1  lib/github.com/diku-dk/sorts/radix_sort.fut:31:24-36\n   #2  lib/github.com/diku-dk/sorts/radix_sort.fut:59:60-62\n   #3  bench_u64.fut:8:3-15\n   #4  bench_u64.fut:7:1-8:15\n"));
         err = FUTHARK_PROGRAM_ERROR;
         goto cleanup;
     }

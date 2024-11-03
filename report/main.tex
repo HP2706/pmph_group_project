@@ -42,7 +42,7 @@ The basic idea of radix sort is to sort an integer into digits consisting of r b
 \item Radix sort sequential:
 The sequential implementation iterates through the digits, r bits at a time, a standard implementation is 1 bit at a time, but more is more efficient. Each digit m, has r bits, such that $m = 2^r$. Radix sort works by performing a counting sort on each set of digits, until all digits have been traversed. Counting sort follows the following syntax: 
 \begin{figure} [H]
-    \includegraphics[width=0.5\linewidth]{count_sort.PNG}
+    \includegraphics[width=0.5\linewidth]{images/count_sort.PNG}
     \caption{Counting Sort \citep{zagharadixvector}}
     \label{fig:enter-label}
 \end{figure}.
@@ -85,7 +85,7 @@ Let us now consider the work depth complexity, for a list of length n, the work 
 Although \citep{zagharadixvector} was great at the time, our literature search provided several higher performing parallel radix sorts. The first implementation by Satish et. al. provides a significant speed up from previous methods using the following ground principles and distributing 4 bit digits per thread, 
 \begin{figure} [H]
     \centering
-    \includegraphics[width=\linewidth]{satish.PNG}
+    \includegraphics[width=\linewidth]{images/satish.PNG}
     \caption{Satish steps \citep{satish}}
     \label{fig:enter-label}
 \end{figure}.
@@ -106,7 +106,7 @@ Thus implicit counting reduces the count operations from 4 in Satish. et. al to 
 
 \begin{figure} [H]
     \centering
-    \includegraphics[width=\linewidth]{mixed-data.PNG}
+    \includegraphics[width=\linewidth]{images/mixed-data.PNG}
     \caption{Mixed data method \citep{ha2010implicit}}
     \label{fig:enter-label}
 \end{figure}.
