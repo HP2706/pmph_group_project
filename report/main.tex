@@ -344,7 +344,7 @@ We benchmarked cuda, futhark and our own implementation for data types u8, u16, 
 We use GB/S (gigabytes per second) as our primary performance metric rather than operations per second. This choice is deliberate because radix sort exhibits low arithmetic intensity \citep{ha2010implicit}, making it fundamentally memory-bound rather than compute-bound. GB/S also allows for a good comparison of speed and scalability between the methods.
 
 \begin{figure}[h]
-\includegraphics[width=1\textwidth]{images/combined_benchmarks.png}
+\includegraphics[width=1\textwidth]{images/combined_logged_benchmarks.png}
 \end{figure}
 
 Given more time, we would have liked to also benchmark the performance for a fixed array size as a function of key entropy.
