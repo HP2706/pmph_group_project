@@ -168,6 +168,29 @@ Additionally, the algorithm has bank conflict-free access, storing in different 
 Mapping of integers from [a,b to 0, b-a] for integers, and floats by mapping from [a,b] to [0.5, 1] to change from 32 bit to 24 bit. 30\% performance increase. It is an approximation but it is precise enough.
 
 \section{In depth cuda implementation}
+We split our implementation of the parallel radix sort on cuda into four main kernels:
+\begin{itemize}
+    \item Histogram kernel
+    \item Transpose kernel
+    \item Scan kernel
+    \item A final rank and permute kernel
+\end{itemize}
+
+We follow the possible good values recommended, thus $Q = 22, lgH = 8, H = 256, B = 256$.
+
+\subsection{Histogram kernel}
+The parallel cuda-implementation of the histogram processes $Q$ elements per thread. We decided to use shared memory while processing the histogram, as otherwise we would have to access global memory many times, which is slower than first using shared memory, and then writing the final histogram to global memory.
+
+Unfortunately we use atomic adds for incrementing our histogram buckets. This is done $Q$ times per thread, which is not ideal, as atomic adds impacts performance negatively, which likely affects our results as seen in the last section.
+
+Notably for the histogram we sort each element based on each bit, instead of the regular approach of sorting by each digit. This approach is both more memory efficient and faster.  
+
+\subsection{Transpose kernel}
+
+The transpose kernel is relatively simple and is heavily inspired by the one presented in the week 2 assignment. This transpose kernel use a tiled approach where we use memory coalescing to ensure better performance.
+\subsection{Scan kernel}
+
+\subsection{Rank-and-permute kernel}
 
 \section{Performance evaluation}
 
@@ -175,3 +198,4 @@ Mapping of integers from [a,b to 0, b-a] for integers, and floats by mapping fro
 \bibliography{references}
 
 \end{document}
+
