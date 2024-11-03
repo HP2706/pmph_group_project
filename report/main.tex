@@ -21,10 +21,15 @@
     commentstyle=\color{green}, % comment color
     stringstyle=\color{red}, % string color
     linewidth=1.2\textwidth, % adjusts the width of the code block
-    xleftmargin=1em, % left margin for the code block
-    xrightmargin=1em % right margin for the code block
+    xleftmargin=-6em, % left margin for the code block
+    xrightmargin=-1em % right margin for the code block
 }
 
+\lstset{language=C++,
+    morekeywords={__syncthreads, uint16_t, threadIdx}, % Add CUDA-specific keywords
+    commentstyle=\color{green!50!black}, % Adjust comment color
+    basicstyle=\footnotesize\ttfamily
+}
 
 \title{PMPH group project: Sorting on GPUs}
 \author{Mathias Heldbo (tzc182), Rasmus Gabelgaard Nielsen (ncg106) \\ and Hans Peter Lyngsøe (pvr448)}
@@ -35,47 +40,55 @@
 \maketitle
 
 \section{The radix sort algorithm }
-In order to gain an understanding of radix sort, the sequential implementation will be discussed, and then a discussion of parallelization using basic blocks. 
+Radix sort is a very important and efficient sorting algorithm, in this section we will discuss the sequential implementation as well as parallelization using basic blocks.
 \begin{itemize}
-\item Radix sort
-The basic idea of radix sort is to sort an integer into digits consisting of r bits. Then the list is sorted for each digit until all digits have been traversed and the list is fully sorted. The main assumption of radix sort is that all integers in the input list can be split into digits
-\item Radix sort sequential:
-The sequential implementation iterates through the digits, r bits at a time, a standard implementation is 1 bit at a time, but more is more efficient. Each digit m, has r bits, such that $m = 2^r$. Radix sort works by performing a counting sort on each set of digits, until all digits have been traversed. Counting sort follows the following syntax: 
+\item Radix sort: \\
+The basic idea of radix sort is to sort an integer into digits of the form $2^r$ consisting of r bits. Then the list is sorted for each digit until all digits have been traversed and the list is fully sorted. The main assumptions of radix sort is that all integers in the input list are of fixed length, and can all be represented as bits, that the integer or string can be split into digits/keys with a known and limited range, and that we have a stable sorting algorithm for each digit, such as counting sort. 
+\item Radix sort sequential: \\
+The sequential implementation iterates through the digits, r bits at a time. The simplest implementation does 1 bit at a time, but larger r can improve locality. Each digit m, has r bits, such that $m = 2^r$. Radix sort works by performing a counting sort on each set of digits, until all digits have been traversed. Counting sort follows the following syntax: 
 \begin{figure} [H]
-    \includegraphics[width=0.5\linewidth]{report/images/count_sort.PNG}
+    \includegraphics[width=0.5\linewidth]{images/count_sort.PNG}
     \caption{Counting Sort \citep{zagharadixvector}}
     \label{fig:enter-label}
 \end{figure}.
 
-Where Histogram-Keys counts the number of elements in a bucket for each unique digit. Scan-Buckets, scan the buckets and returns the position at which the first element of a subset having a certain digit is to be placed, that is, the offset. Finally, Rank-and-permute matches the digit value with the bucket offset and iterates through each "sub bucket" to order the elements by their digit. After this, counting sort is repeated on each subset of digits until the whole list is sorted.  
-\item For parallelization of radix sort, similar ideas are used, however, there a few key differences. One such method is discussed in \citep{zagharadixvector}. With p processors, the input list is split into p sub-lists for each processor to work on. Each processor performs Histogram-keys locally to create local histograms, then scan buckets is run globally to calculate the global offset, Rank and Permute can then be performed locally and written to global memory as Rank and Permute takes in the offset, and therefore doesn't overwrite the work done by other processors \citep{zagharadixvector}.
+Where Histogram-Keys counts the number of elements in a bucket for each unique digit. Scan-Buckets, scan the buckets and returns the position at which the first element of a subset having a certain digit is to be placed, that is, the offset. Finally, Rank-and-permute matches the digit value with the bucket offset and iterates through each "sub bucket" to order the elements by their digit. After this, counting sort is repeated on each subset of digits until the whole list is sorted. 
 
-Let us now consider a very simple parallel radix sort implementation going through 1 bit at a time, for 32 bit integers using basic blocks, and let us consider the example of
+\item For parallelization of radix sort, similar ideas are used, however, there are a few key differences. One such method is discussed in \citep{zagharadixvector}. With p processors, the input list is split into p sub-lists for each processor to work on. Each processor performs Histogram-keys locally to create local histograms, then a global scan is performed across buckets to calculate the global offset, Rank and Permute can then be performed locally and written to global memory as Rank and Permute takes in the offset, and therefore there are no dependencies across processors \citep{zagharadixvector}. 
+
+Let us now consider a very simple parallel radix sort implementation going through 1 bit at a time, for 32- bit integers using basic blocks, and let us consider the example of
 $$\begin{bmatrix} 1, 4, 2, 3\end{bmatrix}$$
 with a bit representation of: 
 $$\begin{bmatrix} 001, 100, 010, 011\end{bmatrix}$$
 Please bear in mind that this implementation is a very simplified parallel radix sort implementation in Futhark using basic blocks such as map, scan, reduce and scatter. Due to its syntax, Futhark automatically distributes the processes depending on available processors, however, better approaches are discussed in part 2. 
 \begin{lstlisting}
-
 -- xs = [1,4,2,3] in integer format
 -- xs = [001, 100, 010, 011] in bit format 
-def radix_bit [n] 't (f: t -> u32) (xs: [n]t) (b: i32): [n]t =
-(1)    let bits = map(\x -> (i32.u32 (f x >> u32.i32 b )) & 1) xs -- [1, 0, 0, 1], D = O(1), W = O(n)
-(2)    let bits_neg = map (1-) bits                               -- [0, 1, 1, 0], D = O(1), W = O(n)
-(3)    let offs = reduce (+) 0 bits_neg                           -- 2,            D = O(log n), W = O(n)
-(4)    let idxs0 = map2 (*) bits_neg (scan (+) 0 bits_neg)        -- [0, 1, 2, 0], D = O(log n), W = O(n)
-(5)    let idxs1 = map2 (*) bits (map (+offs) (scan (+) 0 bits))  -- [3, 0, 0, 4], D = O(log n), W = O(n)
-(6)    let idxs2 = map2 (+) idxs0 idxs1                           -- [3, 1, 2, 4], D = O(1), W = O(n)
-(7)    let idxs = map (\x -> x-1) idxs2                           -- [2, 0, 1, 3], D = O(1), W = O(n)
-(8)    let xs' = scatter (copy xs) idxs xs                        -- [4, 2, 1, 3], D = O(1), W = O(n)
-       -- in terms of the bit in question, it becomes        [100, 010, 001, 011]
-(9)    in xs'                                                                   -- D = O(log n), W = O(n)
+def radix_bit [n] `t (f: t -> u32) (arr: [n]t) (b: i32): [n]t =
+(1)    let bits = map(\x -> (i32.u32 (f x >> u32.i32 b )) & 1) xs -- [1, 0, 0, 1]
+                                                                  -- D = O(1), W = O(n)
+(2)    let bits_neg = map (1-) bits                               -- [0, 1, 1, 0]
+                                                                  -- D = O(1), W = O(n)
+(3)    let offs = reduce (+) 0 bits_neg                           -- 2, 
+                                                                  -- D = O(log n), W = O(n)
+(4)    let idxs0 = map2 (*) bits_neg (scan (+) 0 bits_neg)        -- [0, 1, 2, 0],
+                                                                  -- D = O(log n), W = O(n)
+(5)    let idxs1 = map2 (*) bits (map (+offs) (scan (+) 0 bits))  -- [3, 0, 0, 4], 
+                                                                  -- D = O(log n), W = O(n)
+(6)    let idxs2 = map2 (+) idxs0 idxs1                           -- [3, 1, 2, 4]
+                                                                  -- D = O(1), W = O(n)
+(7)    let idxs = map (\x -> x-1) idxs2                           -- [2, 0, 1, 3]
+                                                                  -- D = O(1), W = O(n)
+(8)    let xs` = scatter (copy xs) idxs xs                        -- [4, 2, 1, 3]
+                                                                  -- D = O(1), W = O(n)
+        -- in terms of the bit in question, it becomes [100, 010, 001, 011]
+(9)    in xs`                                                                                                                                -- D = O(log n), W = O(n)
 
-def radix [n] 't (f: t -> u32) (xs: [n]t): [n]t = 
+def radix [n] `t (f: t -> u32) (xs: [n]t): [n]t = 
 (10)    loop xs for i < 32 do radix_bit f xs i                     -- D = O(log n), W = O(n)
 \end{lstlisting}
 
-This implementation is from \href{https://futhark-lang.org/examples/radix-sort-key.html}{radix-sort-key (futhark-lang.org)}, and applied to each bit of 32 bit unsigned integers, as radix sort requires each digit to be in the range of 0 to m-1. The radix\_bit part of the algorithm takes in a bit. The bits are stored in bits (1), bits\_neg (2) contains the bits converted to their compliment, offs (3), get the offsets of the bits by calculating how many 0 bits there are, which is what bits\_neg is used for. Idxs0 (4) finds the indices of elements with a bit of 0, while idxs1 (5) finds the indices of elements with a bit of 1, and idxs2 (6) concatenate those two lists. Indexes are then stored in idxs (7) assuming zero indexing, by subtracting 1 from every index. Then scatter (8) is used to distribute the elements to their corresponding location.
+This implementation is from \href{https://futhark-lang.org/examples/radix-sort-key.html}{radix-sort-key (futhark-lang.org)}, and applied to each bit of 32 bit unsigned integers, as radix sort requires each digit to be in the range of 0 to m-1. The radix\_bit part of the algorithm takes in a bit. The bits are stored in bits (1), bits\_neg (2) contains the bits converted to their compliment, offs (3), get the offsets of the bits by calculating how many 0 bits there are, which is what bits\_neg is used for. The bits array is similar to what histogram keys does, when considering a digit of size 2, as in this case. Idxs0 (4) finds the indices of elements with a bit of 0, while idxs1 (5) finds the indices of elements with a bit of 1, and idxs2 (6) concatenate those two lists. Indexes are then stored in idxs (7) assuming zero indexing, by subtracting 1 from every index. Then scatter (8) is used to distribute the elements to their corresponding location.
 \\
 Let us now consider the work depth complexity, for a list of length n, the work and depth complexity is written next to the code, where scan and reduce both have a depth complexity of O(log n), and all lines have O(n) work complexity, as they traverse n elements. While this work depth complexity might seem good on paper, this is a best case scenario, in which we always have n processors. More advanced methods deal with the distribution of the workload in a fashion more suited to the GPU, and this improving the overall speed and efficiency of the algorithm. 
 \end{itemize}
@@ -106,7 +119,7 @@ Thus implicit counting reduces the count operations from 4 in Satish. et. al to 
 
 \begin{figure} [H]
     \centering
-    \includegraphics[width=\linewidth]{report/images/mixed-data.PNG}
+    \includegraphics[width=\linewidth]{images/mixed-data.PNG}
     \caption{Mixed data method \citep{ha2010implicit}}
     \label{fig:enter-label}
 \end{figure}.
@@ -132,7 +145,7 @@ We have decided to attempt to implement the Ha. et. al algorithm
    For each bit shift (e.g., 4 bits per pass):
      - Map the current bit shift to all elements.
        * Work: O(n), Depth: O(1)
-     - Create an array of structures `AoS` by associating each element's index and key.
+     - Create an array of structures `AoS` by associating each element`s index and key.
        * Work: O(n), Depth: O(1)
 
 3. Local counting and presorting (within each block):
@@ -186,8 +199,8 @@ We follow the possible good values recommended, thus $Q = 22, lgH = 8, H = 256, 
 \subsection{Histogram kernel}
 The parallel cuda-implementation of the histogram processes $Q$ elements per thread. 
 We decided to use shared memory while processing the histogram, as otherwise we would have to access global memory many times, which is slower than first using shared memory, and then writing the final histogram to global memory.
-Unfortunately we use atomic adds for incrementing our histogram buckets. This is done $Q$ times per thread, which is not ideal, as atomic adds impacts performance negatively, which likely affects our results as seen in the last section.
-Notably for the histogram we sort each element based on each bit, instead of the regular approach of sorting by each digit. This approach is both more memory efficient and faster.  
+Unfortunately we have to use atomic adds for incrementing our histogram buckets which hampers performance due to contention problems as our histograms have few keys. This is done $Q$ times per thread, which is not ideal, as atomic adds impacts performance negatively, which likely affects our results as seen in the last section.
+Notably for the histogram we sort each element based on each bit, instead of the regular approach of sorting by each digit. This approach is both more memory efficient and faster.(TODO:justification?? i dont understand what is meant here)
 
 \subsection{Transpose kernel}
 
@@ -196,24 +209,22 @@ as part of the position computation across buckets we need to compute and update
 Buckets[i,j]_{after} = \sum_{k=0}^{p-1} \sum_{m=0}^{j-1} Buckets[k,m] + \sum_{k=0}^{i-1} Buckets[k,j]
 \]
 
-doing this naively would lead to uncoalesced access as buckets[i, j] and buckets[i+1, j] will be H apart. As we store our matrix in row-major order.
-In order to efficiently and in a coalesced manner scan our histograms(one for each block) we transpose our matrix such that buckets[i, j] and buckets[i+1, j] will now only be one element apart.
+doing this naively would lead to uncoalesced access as buckets[i, j] and buckets[i+1, j] will be H apart in memory. As we store our matrix in row-major order. In order to efficiently and in a coalesced manner scan our histograms(one for each block) we transpose our matrix such that buckets[i, j] and buckets[i+1, j] will now only be one element apart.
 The transpose kernel is relatively simple and is heavily inspired by the one presented in the week 2 assignment. 
 We read coalesced from global memory to shared memory(at miniscule performance cost) then read uncoalesced in shared memory and write back coalesced to global memory.
 
-as per cosmins slides
+as per Cosmin's slides
 \begin{figure}
-  \includegraphics{report/images/coalesced_transpose.png}[width=0.1]
-  slides/L6-locality.pdf
+  \includegraphics[width=1\textwidth]{images/coalesced_transpose.png}
+  \caption{slides/L6-locality.pdf}
 \end{figure}
 
 
 We use this transpose kernel twice, once before scanning and then again after scanning.
 
 \subsection{Scan kernel}
-The scan kernel is called on the transposed matrix to comoute the indices for the rand-and-permute kernel. 
-We use inclusive scan that performs scan at both the block and warp level, efficiently explotiting the fact that the work depth of scan over an associate binary operator(+) is log(n).
-%TODO Write more for this
+The scan kernel is called on the transposed matrix to compute the indices for the rand-and-permute kernel. 
+We use inclusive scan that performs scan at both the block and warp level, at both levels exploiting the fact that the work depth of scan over an associate binary operator(+) is log(n). We use the efficient implementation of block and warp level scan from assignment2.
 
 \subsection{Rank-and-permute kernel}
 
@@ -230,15 +241,12 @@ At last each thread reads its new elements from shared back to local memory. And
 
 After the two-way partitioning each thread write its q elements to shared memory and then each block writes its QB elements from shared to global memory. 
 Note that we do not have to perform any inter-block communication as all position information has been communicated via the scan across blocks.
-We include the inner loop over lgh, the most intersting aspects of the kernel below.
+We include the inner loop over lgh, the most interessting aspects of the kernel below.
+
+In terms of basic blocks of parallel programming, the rank and permute kernel corresponds to doing a scan/prefix sum and then scattering those elements. 
 \newpage
 
-\begin{lstlisting}[language=C++,
-  morekeywords={__syncthreads, uint16_t, threadIdx},
-  commentstyle=\color{green!50!black},
-  basicstyle=\footnotesize\ttfamily
-]
-
+\begin{lstlisting}[language=c++]
   // Sequentially reduce Q elements
         uint16_t accum = 0;
         for (int q_idx = 0; q_idx < P::Q; q_idx++) {
@@ -326,44 +334,48 @@ This means our sorting algorithm first takes in a completely unsorted array, the
 After the rank-and-permute kernel, we overwrite the input array we gave to the histogram and build a new array on the result of the rank-and-permute kernel. 
 This process is then repeated, where the histogram is build on the rank-and-permute output, for however many bits our elements in our array have. 
 As we are using 32 bit numbers, it means we launch the kernels 32 times to obtain a fully sorted array. 
-Consequently, this can have an effect on the performance of our sorting and some papers like \citep{satish} suggest that for instead of building a histogram for each bit, it was more beneficial if we processed four bits at a time, which would lead to only launching the kernels 8 times for 32 bit number. 
+Consequently, this can have an effect on the performance of our sorting and some papers like \cite{satish} suggest that for instead of building a histogram for each bit, it was more beneficial if we processed four bits at a time, which would lead to only launching the kernels 8 times for 32 bit number. 
 at each iteration except for the last one, we swap our input and output buffer.
 
+While radix-sort does allow for stable sort in a sequential version, our parallel implementation very much depends on which thread accesses memory first for equal elements, thus it is not stable. Consequently, it is not deterministic either. 
 
 \section{Performance evaluation}
 We benchmarked cuda, futhark and our own implementation for data types u8, u16, u32, u64.
-We use GB/S (gigabytes per second) as our primary performance metric rather than operations per second. This choice is deliberate because radix sort exhibits low arithmetic intensity \citep{ha2010implicit}, meaning it is fundamentally memory-bound rather than compute-bound. The low arithmetic intensity can be understood by examining the core operations of radix sort:
-
-\begin{enumerate}
-  \item Extracting digits (simple bit operations: shifts and masks)
-  \item Counting occurrences (basic increments)
-  \item Computing offsets (simple additions in scan)
-  \item Permuting elements (memory movements)
-\end{enumerate}
-  
-Most of these operations involve moving data or performing trivial computations, resulting in very few arithmetic operations per memory access. For example, when processing a 32-bit number, we might perform 2-3 bit operations but must read and write the entire 4-byte value, leading to a very low ratio of computation to memory traffic.
-Since the algorithm's performance is limited by how quickly we can move data through memory, measuring throughput in GB/S provides a more meaningful comparison of implementation efficiency than measuring computational throughput would.
+We use GB/S (gigabytes per second) as our primary performance metric rather than operations per second. This choice is deliberate because radix sort exhibits low arithmetic intensity \citep{ha2010implicit}, making it fundamentally memory-bound rather than compute-bound. GB/S also allows for a good comparison of speed and scalability between the methods.
 
 \begin{figure}[h]
-  \includegraphics{report/images/combined_benchmarks.png}[width=0.2]
+\includegraphics[width=1\textwidth]{images/combined_benchmarks.png}
 \end{figure}
 
-with more time, we would have liked to also benchmark the performance for a fixed array size as a function of entropy of the keys.
+Given more time, we would have liked to also benchmark the performance for a fixed array size as a function of key entropy.
 Another thing that would be interesting to study is the impact of lgH on our performance, on the one hand increasing lgh would lead to fewer steps of countsort(which would have to be performed sequentially to maintain the invariant)
-Additionally we would increase.
 
 
 \subsection{Discussion of results}
-The results show that our implementation is comparable to cub's implementation, and is definitely better than the futhark baseline, which was the goal of this project.
+The results show that our implementation is comparable to cub's implementation, and is definitely better than the futhark baseline, which was the goal of this project. Notably, we see our implementation performs slightly better than CUB's for uint32\_t keys with large datasets (100M+ keys). This is quite impressive, however it could be possible that the default parameters for CUB could be optimized to yield better results, as we did not find a way to configure the $Q$ or $H$ parameter in CUB. 
 
 \subsection{Suggestions for improving our radix-sort implementation}
-As alluded to earlier, we could have processed more bits for our histogram, which could have lead to us launching oour kernels fewer times, thus increasing performance.
+As alluded to earlier, we could have processed more bits for our histogram, which could have lead to us launching our kernels fewer times, thus increasing performance. Otherwise there might be some optimizations like decreasing the stride for memory access to global memory in some cases. There is also the possibility that we had one or two too many syncthreads, as we did not have time to properly remove any unnecessary ones. One of the largest performance hits is probably the fact that we use atomic adds. Those can be very slow and while it might be necessary, it could be interesting if we had time to explore methods to avoids those adds, for instance by applying privatization.
 
 \subsection{Usage}
 
-for interacting with 
+There are multiple options in our makefile. If you wish to test that CUB and our implementation of radix sort runs and validates, please run
+\begin{lstlisting}
+make test
+\end{lstlisting}
+If you wish to benchmark all implementations (futhark, cub and ours), run 
+\begin{lstlisting}
+bash bench_all.bash
+\end{lstlisting}
+Which will be saved to csv and can be visualized with visualize.ipynb.
+Finally if you want to measure throughput for one configuration of either CUB or our implementation run:
+\begin{lstlisting}
+make run_gpu
+./gpu <datatype: u64, u32, u16 or u8> <sizeofarray> <cuda: 0, ours: 1> <maxvalue for datatype>
+\end{lstlisting}
+Please note, choosing a too small array size might be formatted out while printing and be reported as 0.00 because the throughput is too small. For instance try ./gpu u32 1000000 1 4294967295
+
+
 
 \bibliographystyle{plainnat}
 \bibliography{references}
-
-\end{document}
