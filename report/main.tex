@@ -187,15 +187,34 @@ Notably for the histogram we sort each element based on each bit, instead of the
 
 \subsection{Transpose kernel}
 
-The transpose kernel is relatively simple and is heavily inspired by the one presented in the week 2 assignment. This transpose kernel use a tiled approach where we use memory coalescing to ensure better performance.
+The transpose kernel is relatively simple and is heavily inspired by the one presented in the week 2 assignment. This transpose kernel use a tiled approach where we use memory coalescing to ensure better performance. We transpose in blocks of size 256, thus we use tile size of 16x16, which also means we can leverage shared memory before they are written to global to maximize performance.
+
+We use this transpose kernel twice, once before scanning and then again after scanning, as this gives us back the original histogram shape. Note that the array we transpose is simply a 1d-array, so we have to keep that in mind and use the correct width and height to represent our matrix correctly. Consequently, we ensure we access the the 1d array with a stride of 1.
+
 \subsection{Scan kernel}
+The scan kernel is called on the transposed matrix to gain indices for the rand-and-permute kernel. We use inclusive scan on our histogram
+
+%TODO Write more for this
 
 \subsection{Rank-and-permute kernel}
+The rank-and-permute kernel (the final kernel) starts by copying our global scanned matrix into shared memory and then register memory, which allows for faster access to the memory, as we have many reads and writes, and should also allow for coalesced memory access. Then in a loop of size lgH we apply two-way partition for Q elements in our current block.
+
+%TODO Write more here
+
+After the two-way partition we need to copy from our register memory back to global memory. This is done by copying the original and scanned histogram from global to shared memory. Then we can scan the original histogram in order to obtain the correct indices for our elements in each block. Finally based on these indices we can now write all elements processed for each block back to the the final global array, which will be our sorted array.
+
+\subsection{Sorting the whole array}
+In order to sort the entire array, we apply the above kernels for each bit in a loop. This means our sorting algorithm first takes in a completely unsorted array, then applies all the kernels to it. After the rank-and-permute kernel, we overwrite the input array we gave to the histogram and build a new array on the result of the rank-and-permute kernel. This process is then repeated, where the histogram is build on the rank-and-permute output, for however many bits our elements in our array have. As we are using 32 bit numbers, it means we launch the kernels 32 times to obtain a fully sorted array. Consequently, this can have an effect on the performance of our sorting and some papers like \cite{p} suggest that for instead of building a histogram for each bit, it was more beneficial if we processed four bits at a time, which would lead to only launching the kernels 8 times for 32 bit number. 
 
 \section{Performance evaluation}
+We benchmarked cuda, futhark and our own implementation. The results were the following:
+%TODO...
+
+\subsection{Discussion of results}
+
+\subsection{Suggestions for improving our cub implementation}
 
 \bibliographystyle{plainnat}
 \bibliography{references}
 
 \end{document}
-
