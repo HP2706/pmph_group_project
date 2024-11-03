@@ -39,18 +39,15 @@ else
     MAX_VALUE=$MAX_VAL_U8
 fi
 
-# Determine which implementations to run
-IMPL=${1:-"all"}  # Default to running all implementations
 
 for size in "${sizes[@]}"; do
     # Generate dataset (needed for Futhark)
-    echo "calling make gen_data SIZE=$size MAX=$MAX_VALUE TYPE=$DATA_TYPE"
-    make gen_data SIZE=$size MAX=$MAX_VALUE TYPE=$DATA_TYPE
 
     if [[ "$IMPL" == "all" || "$IMPL" == "futhark" ]]; then
         # Run Futhark benchmark
         # only run if size < 200000000 otherwise it will give an error
         if [ $size -lt 200000000 ]; then
+            make gen_data SIZE=$size MAX=$MAX_VALUE TYPE=$DATA_TYPE
             runtime=$(make run_futhark TYPE=$DATA_TYPE 2>&1 | grep -v "make" | grep -v "futhark" | grep -v "cat" | tr -d '\n')
             echo "$DATA_TYPE,$size,$runtime,$MAX_VALUE,futhark" >> $OUTPUT_FILE
         fi

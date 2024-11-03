@@ -10,4 +10,6 @@ experimental_ker2.cuh
 *.in
 *.out
 src/futhark/lib
+*.csv
 *.nfs*
+bench_futhark.c
