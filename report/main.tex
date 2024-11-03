@@ -25,11 +25,6 @@
     xrightmargin=1em % right margin for the code block
 }
 
-\lstset{language=C++,
-    morekeywords={__syncthreads, uint16_t, threadIdx}, % Add CUDA-specific keywords
-    commentstyle=\color{green!50!black}, % Adjust comment color
-    basicstyle=\footnotesize\ttfamily
-}
 
 \title{PMPH group project: Sorting on GPUs}
 \author{Mathias Heldbo (tzc182), Rasmus Gabelgaard Nielsen (ncg106) \\ and Hans Peter Lyngsøe (pvr448)}
@@ -238,7 +233,12 @@ Note that we do not have to perform any inter-block communication as all positio
 We include the inner loop over lgh, the most intersting aspects of the kernel below.
 \newpage
 
-\begin{lstlisting}[language=c++]
+\begin{lstlisting}[language=C++,
+  morekeywords={__syncthreads, uint16_t, threadIdx},
+  commentstyle=\color{green!50!black},
+  basicstyle=\footnotesize\ttfamily
+]
+
   // Sequentially reduce Q elements
         uint16_t accum = 0;
         for (int q_idx = 0; q_idx < P::Q; q_idx++) {
@@ -326,13 +326,23 @@ This means our sorting algorithm first takes in a completely unsorted array, the
 After the rank-and-permute kernel, we overwrite the input array we gave to the histogram and build a new array on the result of the rank-and-permute kernel. 
 This process is then repeated, where the histogram is build on the rank-and-permute output, for however many bits our elements in our array have. 
 As we are using 32 bit numbers, it means we launch the kernels 32 times to obtain a fully sorted array. 
-Consequently, this can have an effect on the performance of our sorting and some papers like \cite{satish} suggest that for instead of building a histogram for each bit, it was more beneficial if we processed four bits at a time, which would lead to only launching the kernels 8 times for 32 bit number. 
+Consequently, this can have an effect on the performance of our sorting and some papers like \citep{satish} suggest that for instead of building a histogram for each bit, it was more beneficial if we processed four bits at a time, which would lead to only launching the kernels 8 times for 32 bit number. 
 at each iteration except for the last one, we swap our input and output buffer.
 
 
 \section{Performance evaluation}
 We benchmarked cuda, futhark and our own implementation for data types u8, u16, u32, u64.
-We use GB/S as a measure of performance(JUSTIFICATION).
+We use GB/S (gigabytes per second) as our primary performance metric rather than operations per second. This choice is deliberate because radix sort exhibits low arithmetic intensity \citep{ha2010implicit}, meaning it is fundamentally memory-bound rather than compute-bound. The low arithmetic intensity can be understood by examining the core operations of radix sort:
+
+\begin{enumerate}
+  \item Extracting digits (simple bit operations: shifts and masks)
+  \item Counting occurrences (basic increments)
+  \item Computing offsets (simple additions in scan)
+  \item Permuting elements (memory movements)
+\end{enumerate}
+  
+Most of these operations involve moving data or performing trivial computations, resulting in very few arithmetic operations per memory access. For example, when processing a 32-bit number, we might perform 2-3 bit operations but must read and write the entire 4-byte value, leading to a very low ratio of computation to memory traffic.
+Since the algorithm's performance is limited by how quickly we can move data through memory, measuring throughput in GB/S provides a more meaningful comparison of implementation efficiency than measuring computational throughput would.
 
 \begin{figure}[h]
   \includegraphics{images/combined_benchmarks.png}[width=0.2]
