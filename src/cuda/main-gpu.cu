@@ -134,12 +134,6 @@ double runSort(
 
     typename P::ElementType* h_out = (typename P::ElementType*)malloc(size * sizeof(typename P::ElementType));
     cudaMemcpy(h_out, d_out, size * sizeof(typename P::ElementType), cudaMemcpyDeviceToHost);
-    
-    std::ofstream outfile("cuda_results_2.txt");
-    for (int i = 0; i < size; i++) {
-        outfile << h_out[i] << "\n";
-    }
-    outfile.close();
 
     // Calculate and print bandwidth and latency
     double gigabytes = (double)(size * sizeof(typename P::ElementType) * 8) / (1024 * 1024 * 1024);

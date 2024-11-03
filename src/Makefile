@@ -15,7 +15,7 @@ BENCH_HISTOGRAM_EXEC = bench_histogram_binary
 TEST_SRC = cuda/tests.cu
 TEST_EXEC = test_binary
 
-default: compile_gpu run_gpu
+default: test run_gpu
 
 .cu.o: $(SRC) $(HELPERS)
 	$(CXX) -c $@ $<
@@ -43,7 +43,7 @@ $(TEST_EXEC): $(TEST_SRC) $(HELPERS) $(KERNELS)
 
 SIZE ?= 10000000
 TYPE ?= u64
-IMPL ?= 1
+IMPL ?= 1 #1 use our implementation 0 use futhark
 MAX_VAL ?= 100000
 run_gpu: $(EXEC_GPU)
 	./$(EXEC_GPU) $(TYPE) $(SIZE) $(IMPL) $(MAX_VAL)
