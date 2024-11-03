@@ -180,7 +180,7 @@ We have decided to attempt to implement the Ha. et. al algorithm
 Additionally, the algorithm has bank conflict-free access, and stores in different arrays to avoid concurrent access. It also does 
 mapping of integers from [a,b to 0, b-a], and of floats by mapping from [a,b] to [0.5, 1] to change from 32 bit to 24 bit, giving a 30\% performance increase. It is an approximation, however, it is precise enough for the implementation. Following the work depth complexity, it is virtually the same for both implementations, however, as stipulated before, the sequential approach is unable to utilize the parallel blocks and will therefore be a lot slower. 
 
-Finally, we expect the algorithm to be well suited for the gpu single instruction multiple data model(SIMT) as the algorithm which in its essence is a composition of histogram->scan->scatter maps naturally to the GPU's execution model as these exhibit regular access patterns, avoiding the irregular uncoalesced  access patterns and thread divergence typical of comparison-based sorts. 
+Finally, we expect the algorithm to be well suited for the gpu single instruction multiple data model(SIMT) as the algorithm which in its essence is a composition of histogram->scan->scatter maps naturally to the GPU's execution model as these exhibit regular access patterns, avoiding the irregular uncoalesced  access patterns and thread divergence typical of comparison-based sorts. Additionally, the algorithm's core operations - scan and histogram computations - can effectively leverage shared memory and L1 cache through localized, block-level processing before global consolidation. 
 
 \citep{ha2010implicit} 
 
