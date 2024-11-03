@@ -25,6 +25,11 @@
     xrightmargin=1em % right margin for the code block
 }
 
+\lstset{language=C++,
+    morekeywords={__syncthreads, uint16_t, threadIdx}, % Add CUDA-specific keywords
+    commentstyle=\color{green!50!black}, % Adjust comment color
+    basicstyle=\footnotesize\ttfamily
+}
 
 \title{PMPH group project: Sorting on GPUs}
 \author{Mathias Heldbo (tzc182), Rasmus Gabelgaard Nielsen (ncg106) \\ and Hans Peter Lyngsøe (pvr448)}
@@ -42,7 +47,7 @@ The basic idea of radix sort is to sort an integer into digits consisting of r b
 \item Radix sort sequential:
 The sequential implementation iterates through the digits, r bits at a time, a standard implementation is 1 bit at a time, but more is more efficient. Each digit m, has r bits, such that $m = 2^r$. Radix sort works by performing a counting sort on each set of digits, until all digits have been traversed. Counting sort follows the following syntax: 
 \begin{figure} [H]
-    \includegraphics[width=0.5\linewidth]{count_sort.PNG}
+    \includegraphics[width=0.5\linewidth]{images/count_sort.PNG}
     \caption{Counting Sort \citep{zagharadixvector}}
     \label{fig:enter-label}
 \end{figure}.
@@ -106,7 +111,7 @@ Thus implicit counting reduces the count operations from 4 in Satish. et. al to 
 
 \begin{figure} [H]
     \centering
-    \includegraphics[width=\linewidth]{mixed-data.PNG}
+    \includegraphics[width=\linewidth]{images/mixed-data.PNG}
     \caption{Mixed data method \citep{ha2010implicit}}
     \label{fig:enter-label}
 \end{figure}.
@@ -168,7 +173,12 @@ Additionally, the algorithm has bank conflict-free access, storing in different 
 Mapping of integers from [a,b to 0, b-a] for integers, and floats by mapping from [a,b] to [0.5, 1] to change from 32 bit to 24 bit. 30\% performance increase. It is an approximation but it is precise enough.
 
 \section{In depth cuda implementation}
-We split our implementation of the parallel radix sort on cuda into four main kernels:
+
+Radix sort can viewed as a sequential application of countsort across different bit intervals, each iteration maintaining the invariant that
+the array is sorted with respect to the last bit.
+
+We can break countsort into 4 fundamental kernels.
+
 \begin{itemize}
     \item Histogram kernel
     \item Transpose kernel
@@ -179,42 +189,169 @@ We split our implementation of the parallel radix sort on cuda into four main ke
 We follow the possible good values recommended, thus $Q = 22, lgH = 8, H = 256, B = 256$.
 
 \subsection{Histogram kernel}
-The parallel cuda-implementation of the histogram processes $Q$ elements per thread. We decided to use shared memory while processing the histogram, as otherwise we would have to access global memory many times, which is slower than first using shared memory, and then writing the final histogram to global memory.
-
+The parallel cuda-implementation of the histogram processes $Q$ elements per thread. 
+We decided to use shared memory while processing the histogram, as otherwise we would have to access global memory many times, which is slower than first using shared memory, and then writing the final histogram to global memory.
 Unfortunately we use atomic adds for incrementing our histogram buckets. This is done $Q$ times per thread, which is not ideal, as atomic adds impacts performance negatively, which likely affects our results as seen in the last section.
-
 Notably for the histogram we sort each element based on each bit, instead of the regular approach of sorting by each digit. This approach is both more memory efficient and faster.  
 
 \subsection{Transpose kernel}
 
-The transpose kernel is relatively simple and is heavily inspired by the one presented in the week 2 assignment. This transpose kernel use a tiled approach where we use memory coalescing to ensure better performance. We transpose in blocks of size 256, thus we use tile size of 16x16, which also means we can leverage shared memory before they are written to global to maximize performance.
+as part of the position computation across buckets we need to compute and update of the ith block and jth key as:
+\[
+Buckets[i,j]_{after} = \sum_{k=0}^{p-1} \sum_{m=0}^{j-1} Buckets[k,m] + \sum_{k=0}^{i-1} Buckets[k,j]
+\]
 
-We use this transpose kernel twice, once before scanning and then again after scanning, as this gives us back the original histogram shape. Note that the array we transpose is simply a 1d-array, so we have to keep that in mind and use the correct width and height to represent our matrix correctly. Consequently, we ensure we access the the 1d array with a stride of 1.
+doing this naively would lead to uncoalesced access as buckets[i, j] and buckets[i+1, j] will be H apart. As we store our matrix in row-major order.
+In order to efficiently and in a coalesced manner scan our histograms(one for each block) we transpose our matrix such that buckets[i, j] and buckets[i+1, j] will now only be one element apart.
+The transpose kernel is relatively simple and is heavily inspired by the one presented in the week 2 assignment. 
+We read coalesced from global memory to shared memory(at miniscule performance cost) then read uncoalesced in shared memory and write back coalesced to global memory.
+
+as per cosmins slides
+\begin{figure}
+  \includegraphics{images/coalesced_transpose.png}[width=0.1]
+  slides/L6-locality.pdf
+\end{figure}
+
+
+We use this transpose kernel twice, once before scanning and then again after scanning.
 
 \subsection{Scan kernel}
-The scan kernel is called on the transposed matrix to gain indices for the rand-and-permute kernel. We use inclusive scan on our histogram
-
+The scan kernel is called on the transposed matrix to comoute the indices for the rand-and-permute kernel. 
+We use inclusive scan that performs scan at both the block and warp level, efficiently explotiting the fact that the work depth of scan over an associate binary operator(+) is log(n).
 %TODO Write more for this
 
 \subsection{Rank-and-permute kernel}
-The rank-and-permute kernel (the final kernel) starts by copying our global scanned matrix into shared memory and then register memory, which allows for faster access to the memory, as we have many reads and writes, and should also allow for coalesced memory access. Then in a loop of size lgH we apply two-way partition for Q elements in our current block.
 
-%TODO Write more here
+This kernel is the most complex and requires deliberate usage of the memory hiearchy to run efficiently on gpus.
+First each blocks loads Q*BlOCK\_SIZE elements into shared memory, from there each thread loads its elements from shared memory into its registers.
 
-After the two-way partition we need to copy from our register memory back to global memory. This is done by copying the original and scanned histogram from global to shared memory. Then we can scan the original histogram in order to obtain the correct indices for our elements in each block. Finally based on these indices we can now write all elements processed for each block back to the the final global array, which will be our sorted array.
+next we compute the two-way-partioning sequentially over lgh bits. 
+Each thread computes a sequential reduction over its Q elements checking if the i'th bit of a value is set or unset and stores this in shared memory. 
+next compute an inclusive scan at the block level computing the cumulative sum of unset bits. 
+
+each thread then reads from shared memory back to local memory the cumulative sum at their index. 
+In this way each thread obtains the necessary information for correctly ordering its elements in shared memory. 
+At last each thread reads its new elements from shared back to local memory. And this process is repeated lgH times.
+
+After the two-way partitioning each thread write its q elements to shared memory and then each block writes its QB elements from shared to global memory. 
+Note that we do not have to perform any inter-block communication as all position information has been communicated via the scan across blocks.
+We include the inner loop over lgh, the most intersting aspects of the kernel below.
+\newpage
+
+\begin{lstlisting}[language=c++]
+  // Sequentially reduce Q elements
+        uint16_t accum = 0;
+        for (int q_idx = 0; q_idx < P::Q; q_idx++) {
+            // we shift by bit to get the bit value and we mask it with 1 to get the boolean value
+            // we first shift by the bit_offs offset and then by the current bit from 0 to lgH-1
+            uint16_t res = isBitUnset<uint>(bit_offs + bit, reg[q_idx]);
+            accum += res;
+        }
+        
+        // the thread local count is stored to shared memory
+        local_histo[tid] = accum;
+
+        // we compute the inclusive scan across shared memory
+        // to get the cumulative sum of unset bits up to our threadIdx
+        uint16_t res = scanIncBlock<Add<uint16_t>>(local_histo, tid);
+        __syncthreads();
+        local_histo[tid] = res;
+        __syncthreads();
+
+        // we get the prefix sum for the entire block
+        // which is the cumulative sum of unset bits up to the last thread in the block
+        int16_t prefix_sum = local_histo[P::BLOCK_SIZE-1];
+
+        // each thread loads to its registers from shared memory
+        // the prefix sum of the previous thread
+        if (tid == 0) {
+            accum = 0; 
+        } else {
+            accum = local_histo[tid-1];
+        }
+        __syncthreads();
+
+
+        // each thread sequentially rearranges its Q elements
+        // and write them to their new position in shared memory
+        for (int q_idx = 0; q_idx < P::Q; q_idx++) {
+            uint val = reg[q_idx];
+            uint16_t bit_val = (uint16_t) isBitUnset<uint>(bit_offs + bit, val);
+            
+            accum += bit_val;
+
+            int newpos;
+
+            if (bit_val == uint(1)) {
+                newpos = accum -1 ;
+            } else {
+                // we add the prefix of the thread to the local histogram position
+                // and we subtract the accumumulator to get the new position
+                // we offset by threadIdx.x*Q 
+                newpos = prefix_sum + thread_offset + q_idx - accum;
+            }
+            // we write the element to the new position
+            shmem[newpos] = val;
+        }
+        // wait for all threads to have written their elements
+        __syncthreads();
+
+
+        // each thread loads its new elements from shared memory to its registers
+        if (bit < P::lgH-1) {
+            // if we are not at the last bit
+            // in the new position
+            for (int q_idx = 0; q_idx < P::Q; q_idx++) {
+                reg[q_idx] = shmem[thread_offset + q_idx];
+            }
+        } else {
+            // if we are at the last bit
+            for (int q_idx = 0; q_idx < P::Q; q_idx++) {
+                // we iterate with a stride of BLOCK_SIZE
+                // but this is not a big deal as uncoalesced 
+                // access in shared memory does not affect performance
+                uint local_pos = q_idx*P::BLOCK_SIZE + tid;
+                reg[q_idx] = shmem[local_pos];
+            }
+        }
+        __syncthreads();
+\end{lstlisting}
+
 
 \subsection{Sorting the whole array}
-In order to sort the entire array, we apply the above kernels for each bit in a loop. This means our sorting algorithm first takes in a completely unsorted array, then applies all the kernels to it. After the rank-and-permute kernel, we overwrite the input array we gave to the histogram and build a new array on the result of the rank-and-permute kernel. This process is then repeated, where the histogram is build on the rank-and-permute output, for however many bits our elements in our array have. As we are using 32 bit numbers, it means we launch the kernels 32 times to obtain a fully sorted array. Consequently, this can have an effect on the performance of our sorting and some papers like \cite{satish} suggest that for instead of building a histogram for each bit, it was more beneficial if we processed four bits at a time, which would lead to only launching the kernels 8 times for 32 bit number. 
+
+
+In order to sort the entire array we apply countsort in a loop. 
+This means our sorting algorithm first takes in a completely unsorted array, then applies all the kernels to it. 
+After the rank-and-permute kernel, we overwrite the input array we gave to the histogram and build a new array on the result of the rank-and-permute kernel. 
+This process is then repeated, where the histogram is build on the rank-and-permute output, for however many bits our elements in our array have. 
+As we are using 32 bit numbers, it means we launch the kernels 32 times to obtain a fully sorted array. 
+Consequently, this can have an effect on the performance of our sorting and some papers like \cite{satish} suggest that for instead of building a histogram for each bit, it was more beneficial if we processed four bits at a time, which would lead to only launching the kernels 8 times for 32 bit number. 
+at each iteration except for the last one, we swap our input and output buffer.
+
 
 \section{Performance evaluation}
-We benchmarked cuda, futhark and our own implementation. The results were the following:
-%TODO...
+We benchmarked cuda, futhark and our own implementation for data types u8, u16, u32, u64.
+We use GB/S as a measure of performance(JUSTIFICATION).
+
+\begin{figure}[h]
+  \includegraphics{images/combined_benchmarks.png}[width=0.2]
+\end{figure}
+
+with more time, we would have liked to also benchmark the performance for a fixed array size as a function of entropy of the keys.
+Another thing that would be interesting to study is the impact of lgH on our performance, on the one hand increasing lgh would lead to fewer steps of countsort(which would have to be performed sequentially to maintain the invariant)
+Additionally we would increase.
+
 
 \subsection{Discussion of results}
 The results show that our implementation is comparable to cub's implementation, and is definitely better than the futhark baseline, which was the goal of this project.
 
 \subsection{Suggestions for improving our radix-sort implementation}
 As alluded to earlier, we could have processed more bits for our histogram, which could have lead to us launching oour kernels fewer times, thus increasing performance.
+
+\subsection{Usage}
+
+for interacting with 
 
 \bibliographystyle{plainnat}
 \bibliography{references}

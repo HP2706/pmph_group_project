@@ -25,6 +25,7 @@ coalsTransposeKer(ElTp* A, ElTp* B, int heightA, int widthA) {
   int x = blockIdx.x * T + threadIdx.x;
   int y = blockIdx.y * T + threadIdx.y;
 
+
   if( x < widthA && y < heightA )
       tile[threadIdx.y][threadIdx.x] = A[y*widthA + x];
 
