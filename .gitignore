@@ -2,9 +2,9 @@
 *.gz
 lib
 debug.txt
-*
 !*/
 !*.*
+!Makefile
 experimental_ker2.cuh
 *.txt
 *.in
