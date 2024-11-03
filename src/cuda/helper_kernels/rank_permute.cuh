@@ -92,7 +92,6 @@ __device__ void WriteOutput(
 
 
 template<class P>
-__launch_bounds__(P::BLOCK_SIZE, 1024/P::BLOCK_SIZE)
 __global__ void RankPermuteKer(
     uint16_t* d_hist,
     uint64_t* d_hist_transposed_scanned_transposed, // as we are using scan we have higher integer values and thus need to use uint64_t
@@ -152,14 +151,6 @@ __global__ void RankPermuteKer(
 
     int debug_bit_offs = bit_offs + P::lgH - 1;
     
-    /* if (tid == 0) {
-        debugPartitionCorrectness<P>(
-            shmem, 
-            min(N, P::BLOCK_SIZE * P::Q),
-            debug_bit_offs
-        );
-    }
-    __syncthreads(); */
 
     /* Step 3: Final output generation
      * 1. Copy original and scanned histograms from global to shared memory
@@ -178,18 +169,6 @@ __global__ void RankPermuteKer(
         N,
         arr_out
     );
-
-    /* if (tid == 0) {
-        printf("debugging after write output\n bit_offs: %d\n", debug_bit_offs);
-        debugPartitionCorrectness<P>(
-            arr_out, 
-            min(N, P::BLOCK_SIZE * P::Q),
-            debug_bit_offs,
-            true
-        );
-    }
-    __syncthreads(); */
-
 }
 
 

@@ -126,13 +126,6 @@ bool checkSorted(T* arr, uint64_t size) {
     return true;
 }
 
-
-
-void randomInds(uint32_t* data, uint64_t size, uint32_t M) {
-    for (uint64_t i = 0; i < size; i++)
-        data[i] = rand() % M;
-}
-
 template<class T>
 bool validate(T* A, T* B, uint64_t sizeAB){
     for(uint64_t i = 0; i < sizeAB; i++) {
@@ -144,9 +137,6 @@ bool validate(T* A, T* B, uint64_t sizeAB){
     printf("VALID RESULT!\n");
     return true;
 }
-
-
-
 
 template <typename T, int MAX_VAL>
 void allocateAndInitialize(
@@ -186,113 +176,9 @@ void allocateAndInitialize(
 }
 
 
-template <typename T>
-void checkAllZeros(T* ptr, uint32_t size) {
-    bool all_zeros = true;
-    for (uint32_t i = 0; i < size; i++) {
-        if (ptr[i] != 0) {
-            printf("Non-zero value at index %u: %f\n", i, (float)ptr[i]);
-            all_zeros = false;
-            break;
-        }
-    }
-    if (all_zeros) {
-        // raise an error
-        throw std::runtime_error("All zeros");
-    }
-}
-
-
 template<typename T>
 __inline__ __device__ __host__ T getBitAtPosition(T val, uint32_t bitpos) {
     return (val >> bitpos) & 1;
-}
-
-
-
-
-template<class P>
-__device__ void debugPartitionCorrectness(
-    typename P::ElementType* arr,
-    uint32_t N,
-    uint32_t bitpos, // bit_offs + bit
-    bool print_all = false
-) {
-
-    // Find break point
-    int break_point = -1;
-    for (int i = 0; i < N; i++) {
-        bool is_unset = isBitUnset<typename P::ElementType>(bitpos, arr[i]);
-        if (print_all) {
-            printf("bit: %d, idx: %d, is_unset = %d\n", bitpos, i, is_unset);
-        }
-        
-        if (break_point == -1 && !is_unset) {  // Found first 1
-            break_point = i;
-            if (print_all) {
-                printf("Break point (0->1) found at index: %d\n", break_point);
-            }
-        } else if (break_point != -1 && is_unset) {  // Check violations after break point
-            printf("VIOLATION at idx %d: ", i);
-            print_binary_repr<typename P::ElementType>(arr[i]);
-            printf(" (expected 1, got 0) breakpoint idx: %d\n", break_point);
-            //asm("trap;"); // throw an exception
-        }
-    }
-}
-
-
-// check if the bit pattern breaks at the given bit position
-template<typename T>
-__device__ __host__ void checkBitPatternBreaks(
-    T* arr, 
-    uint32_t N, 
-    uint32_t bitpos,
-    FILE* output_file = nullptr
-) {
-    int break_point = -1;
-    
-    // Find first transition from 0 to 1
-    for (uint32_t i = 0; i < N; i++) {
-        if (output_file) {
-            fprintf(output_file, "getBitAtPosition(arr[%u], %u) = %u\n", i, bitpos, getBitAtPosition(arr[i], bitpos));
-        } else {
-            printf("getBitAtPosition(arr[%u], %u) = %u\n", i, bitpos, getBitAtPosition(arr[i], bitpos));
-        }
-    
-        if (getBitAtPosition(arr[i], bitpos) == 1) {
-            if (output_file) {
-                fprintf(output_file, "Break point (0->1) at index: %d\n", i);
-            } else {
-                printf("Break point (0->1) at index: %d\n", i);
-            }
-            break_point = i;
-            break;
-        }
-    }
-    
-    
-    // Check for violations (any 0s after seeing a 1)
-    if (break_point != -1) {
-        for (uint32_t i = break_point + 1; i < N; i++) {
-            if (output_file) {
-                fprintf(output_file, "getBitAtPosition(arr[%u], %u) = %u\n", i, bitpos, getBitAtPosition(arr[i], bitpos));
-            } else {
-                printf("getBitAtPosition(arr[%u], %u) = %u\n", i, bitpos, getBitAtPosition(arr[i], bitpos));
-            }
-            /* if (getBitAtPosition(arr[i], bitpos) == 0) {
-                if (output_file) {
-                    fprintf(output_file, "Error: Invalid bit pattern at index %u\n", i);
-                    fprintf(output_file, "Expected 1, but found 0 at bitpos %u: ", bitpos);
-                    print_binary_repr(arr[i], output_file);
-                } else {
-                    printf("Error: Invalid bit pattern at index %u\n", i);
-                    printf("Expected 1, but found 0 at bitpos %u: ", bitpos);
-                    print_binary_repr(arr[i], output_file);
-                }
-            } */
-        }
-    }
 }
 
 #endif

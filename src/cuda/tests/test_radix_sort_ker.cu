@@ -146,14 +146,9 @@ __host__ void test_radix_sort_ker(
     printf("checking that cub and radix sort inputs are the same\n");
     assert(validate(cub_h_in, h_in, input_size));
 
-
-    typename P::ElementType* d_out_debug;
-    cudaMalloc((typename P::ElementType**) &d_out_debug, input_size * sizeof(typename P::ElementType));
-
     RadixSortKer<P>(
         d_in,
         d_out,
-        d_out_debug,
         input_size
     );
 
@@ -164,31 +159,8 @@ __host__ void test_radix_sort_ker(
         return;
     }
 
-    cudaMemcpy(h_out, d_out_debug, input_size * sizeof(typename P::ElementType), cudaMemcpyDeviceToHost);
-
-    /* for (int i = 0; i < input_size; i++) {
-        printf("line 113 h_out[%d]: %u\n", i, h_out[i]);
-    } */
-
+    cudaMemcpy(h_out, d_out, input_size * sizeof(typename P::ElementType), cudaMemcpyDeviceToHost);
     quickvalidatesortedarray<uint32_t>(input_size, h_out);
-
-    // if file already exists, delete it
-    std::remove("radix_sort_output.txt");
-
-    // Write RadixSort output to file
-    std::ofstream radix_file("radix_sort_output.txt");
-    if (radix_file.is_open()) {
-        for (uint32_t i = 0; i < input_size; i++) {
-            radix_file << h_out[i] << "\n";
-        }
-        radix_file.close();
-    } else {
-        printf("Error: Could not open radix_sort_output.txt\n");
-    }
-
-    printf("writing cub sort output to file\n");
-
-
 
     // Calculate grid size based on input size
     int elements_per_block = P::BLOCK_SIZE * P::Q;
@@ -196,14 +168,6 @@ __host__ void test_radix_sort_ker(
     
     void* mem = NULL;
     size_t len = 0;
-    /*CUBSortKernel<typename P::ElementType, P::BLOCK_SIZE, P::Q>
-    <<<grid_size, P::BLOCK_SIZE>>>
-    (
-        cub_d_in, 
-        cub_d_out, 
-        input_size
-    );*/
-    //Get mem and length
     
     uint32_t startBit = 0;
     uint32_t endBit = 32;
@@ -227,27 +191,8 @@ __host__ void test_radix_sort_ker(
         return;
     }
     
-    
     // copy results back to host
     cudaMemcpy(cub_h_out, cub_d_out, input_size * sizeof(typename P::ElementType), cudaMemcpyDeviceToHost);
     quickvalidatecub<uint32_t>(input_size, cub_h_out);
     assertCubIsEqualToOurImplementation<uint32_t>(input_size, h_out, cub_h_out);
-    
-    std::remove("cub_sort_output.txt");
-
-    // Write CUBSort output to file
-    std::ofstream cub_file("cub_sort_output.txt");
-    if (cub_file.is_open()) {
-        for (uint32_t i = 0; i < input_size; i++) {
-            cub_file << cub_h_out[i] << "\n";
-        }
-        cub_file.close();
-    } else {
-        printf("Error: Could not open cub_sort_output.txt\n");
-    }
-
-    //printf("checking cub matches radix\n");
-    //assert(validate(cub_h_out, h_out, input_size));
-
-
 }

@@ -133,9 +133,8 @@ __host__ void CountSort(
 
 template<class P>
 __host__ void RadixSortKer(
-    typename P::ElementType* d_in, 
-    typename P::ElementType* d_out, 
-    typename P::ElementType* d_out_debug,
+    typename P::ElementType* d_in,
+    typename P::ElementType* output,
     int size
 ) {
 
@@ -144,7 +143,9 @@ __host__ void RadixSortKer(
     uint64_t* d_hist_transposed_scanned;
     uint64_t* d_hist_transposed_scanned_transposed;
     uint64_t* d_tmp;
+    typename P::ElementType* tmp_swap;
 
+    cudaMalloc((void**) &tmp_swap, sizeof(typename P::ElementType) * size);
     cudaMalloc((void**) &d_hist, sizeof(uint16_t) * P::H*P::GRID_SIZE);
     cudaMalloc((void**) &d_hist_transposed, sizeof(uint16_t) * P::H*P::GRID_SIZE);
     cudaMalloc((void**) &d_hist_transposed_scanned, sizeof(uint64_t) * P::H*P::GRID_SIZE);
@@ -162,7 +163,7 @@ __host__ void RadixSortKer(
     for (int i = 0; i < n_iter; i++) {
         CountSort<P>(
             d_in, 
-            d_out, 
+            tmp_swap, // output
             d_hist, 
             d_hist_transposed, 
             d_hist_transposed_scanned_transposed,
@@ -177,16 +178,11 @@ __host__ void RadixSortKer(
         
         if (i < n_iter - 1) {  // Only swap for all but the last iteration
             typename P::ElementType* tmp = d_in;
-            d_in = d_out;
-            d_out = tmp;
+            d_in = tmp_swap;
+            tmp_swap = tmp;
         }
 
-        // zero out the histogram arrays
-        cudaMemset(d_hist, 0, sizeof(uint16_t) * P::H * P::GRID_SIZE);
-        cudaMemset(d_hist_transposed, 0, sizeof(uint16_t) * P::H * P::GRID_SIZE);
-        cudaMemset(d_hist_transposed_scanned, 0, sizeof(uint64_t) * P::H * P::GRID_SIZE);
-        cudaMemset(d_hist_transposed_scanned_transposed, 0, sizeof(uint64_t) * P::H * P::GRID_SIZE);
-        cudaMemset(d_tmp, 0, sizeof(uint64_t) * P::BLOCK_SIZE);
+
         cudaDeviceSynchronize();
         cudaError_t err = cudaGetLastError();
         if (err != cudaSuccess) {
@@ -205,8 +201,9 @@ __host__ void RadixSortKer(
 
     cudaDeviceSynchronize();
     
-    cudaMemcpy(d_out_debug, d_out, sizeof(typename P::ElementType) * size, cudaMemcpyDeviceToDevice);
+    cudaMemcpy(output, tmp_swap, sizeof(typename P::ElementType) * size, cudaMemcpyDeviceToDevice);
 
+    cudaFree(tmp_swap);
     cudaFree(d_hist);
     cudaFree(d_hist_transposed);
     cudaFree(d_hist_transposed_scanned);
