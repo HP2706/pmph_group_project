@@ -52,7 +52,7 @@ The sequential implementation iterates through the digits, r bits at a time. The
     \label{fig:enter-label}
 \end{figure}.
 
-Where Histogram-Keys counts the number of elements in a bucket for each unique digit. Scan-Buckets, scan the buckets and returns the position at which the first element of a subset having a certain digit is to be placed, that is, the offset. Finally, Rank-and-permute matches the digit value with the bucket offset and iterates through each "sub bucket" to order the elements by their digit. After this, counting sort is repeated on each subset of digits until the whole list is sorted. 
+Where Histogram-Keys counts the number of elements in a bucket for each unique digit. Scan-Buckets, scan the buckets and returns the position at which the first element of a subset having a certain digit is to be placed, that is, the offset. Finally, Rank-and-permute matches the digit value with the bucket offset and iterates through each "sub bucket" to order the elements by their digit. After this, counting sort is repeated on each subset of digits until the whole list is sorted.
 
 \item For parallelization of radix sort, similar ideas are used, however, there are a few key differences. One such method is discussed in \citep{zagharadixvector}. With p processors, the input list is split into p sub-lists for each processor to work on. Each processor performs Histogram-keys locally to create local histograms, then a global scan is performed across buckets to calculate the global offset, Rank and Permute can then be performed locally and written to global memory as Rank and Permute takes in the offset, and therefore there are no dependencies across processors \citep{zagharadixvector}. 
 
@@ -359,14 +359,23 @@ As alluded to earlier, we could have processed more bits for our histogram, whic
 
 \subsection{Usage}
 
-There are multiple options in our makefile. If you wish to test that CUB and our implementation of radix sort runs and validates, please run
+
+There are multiple options in our makefile. If you want to run both test and measure throughput for our kernel run:
+\begin{lstlisting}
+make
+\end{lstlisting}
+from the src folder.
+
+If you wish to test that CUB and our implementation of radix sort runs and validates, please run
 \begin{lstlisting}
 make test
 \end{lstlisting}
+
 If you wish to benchmark all implementations (futhark, cub and ours), run 
 \begin{lstlisting}
 bash bench_all.bash
 \end{lstlisting}
+
 Which will be saved to csv and can be visualized with visualize.ipynb.
 Finally if you want to measure throughput for one configuration of either CUB or our implementation run:
 \begin{lstlisting}
@@ -379,3 +388,5 @@ Please note, choosing a too small array size might be formatted out while printi
 
 \bibliographystyle{plainnat}
 \bibliography{references}
+
+\end{document}
