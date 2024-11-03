@@ -63,7 +63,7 @@ void verifyTranspose(
 
 //Should probably be moved to separate file...
 template<typename P>
-void test_verify_transpose(
+void testTransposeKer(
     uint32_t input_size
 )
 {

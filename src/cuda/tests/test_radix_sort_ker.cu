@@ -91,7 +91,7 @@ void assertCubIsEqualToOurImplementation(
 }
 
 template<typename P>
-__host__ void test_radix_sort_ker(
+__host__ void testRadixSortKer(
     uint32_t input_size
 )
 {

@@ -1,26 +1,31 @@
+#include <iostream>
+#include <sys/time.h>
+#include "cub_kernel.cuh"
+#include "kernels.cuh"
+#include "helper.h"
+#include <unordered_map>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-
 #include "constants.cuh"
 #include <iostream>
 #include <cstdint>
 #include "tests/test_transpose_ker.cu"
 #include "tests/test_radix_sort_ker.cu"
 #include "tests/test_histo_ker.cu"
-#include "tests/test_glb_to_reg.cu"
-#include "tests/test_two_way_partition.cu"
 #include "helper_kernels/prefix_sum.cuh"
-#include "kernels.cuh"
-#include <cuda_runtime.h>
 #include <iostream>
 #include <algorithm>
 #include <vector>
+#include <cuda_runtime.h>
+
+using namespace std;
+
+#define GPU_RUNS    50
+#define ERR          0.000005
 
 
-
-
-int main() {
+void run_tests() {
     initHwd();
 
     // setup params
@@ -36,7 +41,6 @@ int main() {
     printf("QB: %u\n", Q * BLOCK_SIZE);
     printf("grid size : %u\n", GRID_SIZE);
 
-
     using P = Params<
         uint32_t, 
         uint32_t, 
@@ -47,17 +51,12 @@ int main() {
         T
     >;
 
-    //TestTwoWayPartition<P>();
-    
-    //test_verify_transpose<P>(input_size);
-    //test_call_rank_permute_ker<P>(input_size);
+    testTransposeKer<P>(input_size);
+    testHistoKer<P>(input_size);
+    testRadixSortKer<P>(input_size);
+}
 
-    //test_glb_to_reg_ker<P>(input_size);
-    //test_count_sort<P>(input_size);
-    //printf("CountSort done\n");
-
-    //test_histo_ker<P>(input_size);
-    test_radix_sort_ker<P>(input_size);
-    
-    //compare_scan_buckets<P>();
+int main() {
+    run_tests();
+    return 0;
 }

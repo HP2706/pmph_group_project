@@ -50,7 +50,7 @@ void HistoCPU(
 
 
 template<class P>
-void test_histo_ker(uint32_t input_size) {
+void testHistoKer(uint32_t input_size) {
 
     printf("Testing Histogram kernel\n");
 
