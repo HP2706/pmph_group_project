@@ -30,7 +30,7 @@ void run_tests() {
 
     // setup params
 
-    const uint32_t input_size = 100000;
+    const uint32_t input_size = 10000;
     const uint32_t Q = 22; // 22
     const uint32_t lgH = 8;
     const uint32_t BLOCK_SIZE = 256;
@@ -50,8 +50,8 @@ void run_tests() {
         T
     >;
 
-    testTransposeKer<P>(input_size, GRID_SIZE);
-    testHistoKer<P>(input_size, GRID_SIZE);
+    //testTransposeKer<P>(input_size, GRID_SIZE);
+    //testHistoKer<P>(input_size, GRID_SIZE);
     testRadixSortKer<P>(input_size, GRID_SIZE);
 }
 

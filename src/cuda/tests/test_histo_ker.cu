@@ -67,8 +67,20 @@ void testHistoKer(uint32_t input_size, int grid_size) {
     uint32_t hist_len = P::H * grid_size;
     cpu_hist = (typename P::UintType*)calloc(hist_len, sizeof(typename P::UintType));
     
-    allocateAndInitialize<typename P::ElementType, P::MAXNUMERIC_ElementType>(&h_in, &d_in, input_size, true);
-    allocateAndInitialize<typename P::UintType, P::MAXNUMERIC_UintType>(&h_hist, &d_hist, hist_len, false);
+    allocateAndInitialize<typename P::ElementType>(
+        &h_in, 
+        &d_in, 
+        input_size, 
+        true, 
+        P::MAXNUMERIC_ElementType
+    );
+    allocateAndInitialize<typename P::UintType>(
+        &h_hist, 
+        &d_hist, 
+        hist_len, 
+        false, 
+        P::MAXNUMERIC_UintType
+    );
 
     uint32_t bit_pos = 0;
     HistoCPU<P>(

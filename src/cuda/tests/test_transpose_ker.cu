@@ -88,25 +88,28 @@ void testTransposeKer(
     UintType* cpu_h_histogram_transposed = nullptr;
     
 
-    allocateAndInitialize<UintType, P::MAXNUMERIC_UintType>(
+    allocateAndInitialize<UintType>(
         &h_histogram_transposed, 
         &d_histogram_transposed, 
         hist_size,
-        false // we initialize to 0
+        false, // we initialize to 0,
+        P::MAXNUMERIC_UintType
     );
 
-    allocateAndInitialize<UintType, P::MAXNUMERIC_UintType>(
+    allocateAndInitialize<UintType>(
         &h_histogram, 
         &d_histogram, 
         hist_size,
-        true // we do not initialize to 0
+        true, // we do not initialize to 0,
+        P::MAXNUMERIC_UintType
     );
 
-    allocateAndInitialize<UintType, P::MAXNUMERIC_UintType>(
+    allocateAndInitialize<UintType>(
         &h_histogram_transposed_2, 
         &d_histogram_transposed_2, 
         hist_size,
-        false // we initialize to 0
+        false, // we initialize to 0,
+        P::MAXNUMERIC_UintType
     );
 
     // initialize cpu histogram transposed to 0

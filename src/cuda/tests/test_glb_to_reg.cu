@@ -97,18 +97,20 @@ __host__ void test_glb_to_reg_ker(
     typename P::ElementType* h_out;
     typename P::ElementType* d_out;
 
-    allocateAndInitialize<typename P::ElementType, P::MAXNUMERIC_ElementType>(
+    allocateAndInitialize<typename P::ElementType>(
         &h_in, 
         &d_in, 
         N,
-        true
+        true,
+        P::MAXNUMERIC_ElementType
     );
 
-    allocateAndInitialize<typename P::ElementType, P::MAXNUMERIC_ElementType>(
+    allocateAndInitialize<typename P::ElementType>(
         &h_out, 
         &d_out, 
         N,
-        false
+        false,
+        P::MAXNUMERIC_ElementType
     );
 
     //Set shared memory size (assuming it fits the necessary elements)

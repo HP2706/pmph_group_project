@@ -136,12 +136,13 @@ bool validate(T* A, T* B, uint64_t sizeAB){
     return true;
 }
 
-template <typename T, int MAX_VAL>
+template <typename T>
 void allocateAndInitialize(
     T** h_ptr, 
     T** d_ptr, 
     uint32_t N, 
-    bool initRnd = false
+    bool initRnd = false,
+    uint64_t MAX_VAL = 1000
 ) {
     // Allocate and initialize host memory if h_ptr is provided
     if (h_ptr) {

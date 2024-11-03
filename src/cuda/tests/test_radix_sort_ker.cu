@@ -109,28 +109,29 @@ __host__ void testRadixSortKer(
     typename P::ElementType* d_out;
     typename P::ElementType* h_out;
 
-
-
-    allocateAndInitialize<typename P::ElementType, P::MAXNUMERIC_ElementType>(
+    allocateAndInitialize<typename P::ElementType>(
         &h_out,
         &d_out,
         input_size,
-        false
+        false,
+        P::MAXNUMERIC_ElementType
     );
 
     // allocate memory
-    allocateAndInitialize<typename P::ElementType, P::MAXNUMERIC_ElementType>(
+    allocateAndInitialize<typename P::ElementType>(
         &cub_h_in,
         &cub_d_in,
         input_size,
-        true
+        true,
+        P::MAXNUMERIC_ElementType
     );
 
-    allocateAndInitialize<typename P::ElementType, P::MAXNUMERIC_ElementType>(
+    allocateAndInitialize<typename P::ElementType>(
         &cub_h_out,
         &cub_d_out,
         input_size,
-        false
+        false,
+        P::MAXNUMERIC_ElementType
     );
 
     cudaMalloc((typename P::ElementType**) &d_in, input_size * sizeof(typename P::ElementType));
