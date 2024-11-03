@@ -39,8 +39,7 @@ __host__ void CountSort(
     uint64_t* d_hist_transposed_scanned,
     uint64_t* d_tmp,
     uint32_t N,
-    uint32_t bit_offs,
-    typename P::ElementType* h_out_debug = nullptr
+    uint32_t bit_offs
 ) {
 
 
@@ -122,22 +121,7 @@ __host__ void CountSort(
         d_out
     );
 
-    if (h_out_debug != nullptr) {
-        int debug_bit_offs = bit_offs + P::lgH - 1;
-
-        cudaMemcpy(h_out_debug, d_out, sizeof(typename P::ElementType) * N, cudaMemcpyDeviceToHost);
-
-        for (int i = 0; i < N; i++) {
-            printf("h_out_debug[%d]: %u\n", i, h_out_debug[i]);
-        }
-        /* printf("debugging h_out_debug after rank and permute\n bit_offs: %d\n", debug_bit_offs);
-        debugPartitionCorrectness<P>(
-            h_out_debug, 
-            min(N, P::BLOCK_SIZE * P::Q),
-            debug_bit_offs,
-            true
-        ); */
-    }
+   
 
    
     err = cudaGetLastError();
@@ -167,17 +151,12 @@ __host__ void RadixSortKer(
     cudaMalloc((void**) &d_hist_transposed_scanned_transposed, sizeof(uint64_t) * P::H*P::GRID_SIZE);
     cudaMalloc((void**) &d_tmp, sizeof(uint64_t) * P::BLOCK_SIZE);
     
-    // STRICTLY FOR DEBUGGING
-    typename P::ElementType* h_out_debug;
-    h_out_debug = (typename P::ElementType*) malloc(sizeof(typename P::ElementType) * size);
-    
     // check divisibility by lgH
     assert((sizeof(typename P::ElementType)*8) % P::lgH == 0);
     
     int n_iter = (sizeof(typename P::ElementType)*8) / P::lgH;
 
     int bit_offs = 0;
-    printf("n_iter: %d\n", n_iter);
 
 
     for (int i = 0; i < n_iter; i++) {
@@ -190,15 +169,13 @@ __host__ void RadixSortKer(
             d_hist_transposed_scanned, 
             d_tmp, 
             size, 
-            bit_offs,
-            h_out_debug
+            bit_offs
         );
 
         // increment the bit position
         bit_offs += P::lgH;
         
         if (i < n_iter - 1) {  // Only swap for all but the last iteration
-            printf("swapping d_in and d_out at bit_offs: %d\n", bit_offs);
             typename P::ElementType* tmp = d_in;
             d_in = d_out;
             d_out = tmp;
@@ -228,12 +205,6 @@ __host__ void RadixSortKer(
 
     cudaDeviceSynchronize();
     
-    cudaMemcpy(h_out_debug, d_out, sizeof(typename P::ElementType) * size, cudaMemcpyDeviceToHost);
-    /* printf("printing the final output array at radix sort end \n");
-    for (int i = 0; i < size; i++) {
-        printf("line 270 h_out_debug[%d]: %u\n", i, h_out_debug[i]);
-    } */
-
     cudaMemcpy(d_out_debug, d_out, sizeof(typename P::ElementType) * size, cudaMemcpyDeviceToDevice);
 
     cudaFree(d_hist);
