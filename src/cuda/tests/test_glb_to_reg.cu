@@ -52,12 +52,17 @@ __global__ void testGlbToRegKernel(
 }
 
 template<typename P>
-bool verifyGlbToReg(const typename P::ElementType* arr_in, const typename P::ElementType* arr_out, uint64_t N) 
+bool verifyGlbToReg(
+    const typename P::ElementType* arr_in, 
+    const typename P::ElementType* arr_out, 
+    uint64_t N,
+    int grid_size
+) 
 {
     bool success = true;
     const uint32_t QB = P::BLOCK_SIZE * P::Q;
 
-    for (uint32_t bid = 0; bid < P::GRID_SIZE; ++bid) 
+    for (uint32_t bid = 0; bid < grid_size; ++bid) 
     {
         for (uint32_t tid = 0; tid < P::BLOCK_SIZE; ++tid) 
         {
@@ -82,7 +87,8 @@ using ElementType = uint32_t;
 
 template<typename P>
 __host__ void test_glb_to_reg_ker(
-    uint32_t N
+    uint32_t N,
+    int grid_size
 )
 {
     typename P::ElementType* h_in;
@@ -109,11 +115,12 @@ __host__ void test_glb_to_reg_ker(
     size_t shared_mem_size = P::BLOCK_SIZE * P::Q * sizeof(ElementType);
 
     //Launch kernel
-    testGlbToRegKernel<P><<<P::GRID_SIZE, P::BLOCK_SIZE, P::QB*sizeof(typename P::ElementType)>>> 
+    testGlbToRegKernel<P><<<grid_size, P::BLOCK_SIZE, P::QB*sizeof(typename P::ElementType)>>> 
     (
         d_in,
         d_out,
-        N
+        N,
+        grid_size
     );
     cudaDeviceSynchronize();
     cudaError_t err = cudaGetLastError();
@@ -126,37 +133,6 @@ __host__ void test_glb_to_reg_ker(
     {
         printf("GlbToRegKernel passed!\n");
     }
-
-    //Copy result from device to host
-    cudaMemcpy(h_out, d_out, N * sizeof(ElementType), cudaMemcpyDeviceToHost);
-
-    /*for (int i = 0; i < N; ++i)
-    {
-        printf("Expected vs what I got: %d vs %d\n", h_in[i], h_out[i]);
-    }*/
-
-/*    verifyGlbToReg<P>(h_in, h_out, N);
-
-    //Verify output
-    bool test_passed = true;
-    for (int i = 0; i < N; i++) 
-    {
-        if (h_out[i] != h_in[i]) 
-        {
-            printf("Mismatch at index %d: expected %d, got %d\n", i, h_in[i], h_out[i]);
-            test_passed = false;
-            break;
-        }
-    }
-
-    if (test_passed) 
-    {
-        std::cout << "Test passed: GlbToReg function works correctly." << std::endl;
-    } 
-    else 
-    {
-        std::cout << "Test failed: GlbToReg function has errors." << std::endl;
-    }*/
 
     //Free device memory
     cudaFree(d_in);

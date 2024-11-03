@@ -39,14 +39,15 @@ __host__ void CountSort(
     uint64_t* d_hist_transposed_scanned,
     uint64_t* d_tmp,
     uint32_t N,
-    uint32_t bit_offs
+    uint32_t bit_offs,
+    const int grid_size
 ) {
 
 
     static_assert(is_params<P>::value, "P must be an instance of Params");
 
     // we use uint16_t for d_hist
-    Histo<P, uint16_t><<<P::GRID_SIZE, P::BLOCK_SIZE>>>(
+    Histo<P, uint16_t><<<grid_size, P::BLOCK_SIZE>>>(
         d_in,
         d_hist, 
         N, 
@@ -63,7 +64,7 @@ __host__ void CountSort(
     tiled_transpose_kernel<uint16_t, P::T>(
         d_hist,
         d_hist_transposed,
-        P::GRID_SIZE,
+        grid_size,
         P::H
     );
     
@@ -77,7 +78,7 @@ __host__ void CountSort(
     // in the future use something like FusedAddCast<uint16_t, uint32_t>
     scanInc<FusedAddCast<uint16_t, uint64_t>>(
         P::BLOCK_SIZE, // Block size
-        P::GRID_SIZE*P::H,  // Histogram size
+        grid_size*P::H,  // Histogram size
         d_hist_transposed_scanned,     // output: scanned histogram
         d_hist_transposed,
         d_tmp              // temporary storage
@@ -96,7 +97,7 @@ __host__ void CountSort(
         d_hist_transposed_scanned,
         d_hist_transposed_scanned_transposed,
         P::H,
-        P::GRID_SIZE
+        grid_size
     );
     
     cudaDeviceSynchronize();
@@ -109,7 +110,7 @@ __host__ void CountSort(
 
     RankPermuteKer<P>
     <<<
-        P::GRID_SIZE, 
+        grid_size, 
         P::BLOCK_SIZE
     >>>
     (
@@ -145,11 +146,13 @@ __host__ void RadixSortKer(
     uint64_t* d_tmp;
     typename P::ElementType* tmp_swap;
 
+    const int grid_size = (size + (P::BLOCK_SIZE * P::Q - 1)) / (P::BLOCK_SIZE * P::Q);
+
     cudaMalloc((void**) &tmp_swap, sizeof(typename P::ElementType) * size);
-    cudaMalloc((void**) &d_hist, sizeof(uint16_t) * P::H*P::GRID_SIZE);
-    cudaMalloc((void**) &d_hist_transposed, sizeof(uint16_t) * P::H*P::GRID_SIZE);
-    cudaMalloc((void**) &d_hist_transposed_scanned, sizeof(uint64_t) * P::H*P::GRID_SIZE);
-    cudaMalloc((void**) &d_hist_transposed_scanned_transposed, sizeof(uint64_t) * P::H*P::GRID_SIZE);
+    cudaMalloc((void**) &d_hist, sizeof(uint16_t) * P::H*grid_size);
+    cudaMalloc((void**) &d_hist_transposed, sizeof(uint16_t) * P::H*grid_size);
+    cudaMalloc((void**) &d_hist_transposed_scanned, sizeof(uint64_t) * P::H*grid_size);
+    cudaMalloc((void**) &d_hist_transposed_scanned_transposed, sizeof(uint64_t) * P::H*grid_size);
     cudaMalloc((void**) &d_tmp, sizeof(uint64_t) * P::BLOCK_SIZE);
     
     // check divisibility by lgH
@@ -170,7 +173,8 @@ __host__ void RadixSortKer(
             d_hist_transposed_scanned, 
             d_tmp, 
             size, 
-            bit_offs
+            bit_offs,
+            grid_size
         );
 
         // increment the bit position

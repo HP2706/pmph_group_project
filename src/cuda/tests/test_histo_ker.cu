@@ -24,10 +24,11 @@ void HistoCPU(
     typename P::ElementType* input,
     typename P::UintType* histogram,
     uint32_t input_size,
-    uint32_t bit_pos
+    uint32_t bit_pos,
+    int grid_size
 ) {
     // Clear histogram array
-    memset(histogram, 0, P::H * P::GRID_SIZE * sizeof(typename P::UintType));
+    memset(histogram, 0, P::H * grid_size * sizeof(typename P::UintType));
     
     // Calculate mask to extract relevant bits
     typename P::ElementType mask = (P::H - 1) << bit_pos;
@@ -50,7 +51,7 @@ void HistoCPU(
 
 
 template<class P>
-void testHistoKer(uint32_t input_size) {
+void testHistoKer(uint32_t input_size, int grid_size) {
 
     printf("Testing Histogram kernel\n");
 
@@ -63,7 +64,7 @@ void testHistoKer(uint32_t input_size) {
     typename P::UintType* cpu_hist;
 
 
-    uint32_t hist_len = P::H * P::GRID_SIZE;
+    uint32_t hist_len = P::H * grid_size;
     cpu_hist = (typename P::UintType*)calloc(hist_len, sizeof(typename P::UintType));
     
     allocateAndInitialize<typename P::ElementType, P::MAXNUMERIC_ElementType>(&h_in, &d_in, input_size, true);
@@ -74,13 +75,14 @@ void testHistoKer(uint32_t input_size) {
         h_in, 
         cpu_hist, 
         input_size, 
-        bit_pos
+        bit_pos,
+        grid_size
     );
 
     printf("CPU Histogram done\n");
 
 
-    Histo<P, typename P::UintType><<<P::GRID_SIZE, P::BLOCK_SIZE>>>(
+    Histo<P, typename P::UintType><<<grid_size, P::BLOCK_SIZE>>>(
         d_in, 
         d_hist, 
         input_size, 

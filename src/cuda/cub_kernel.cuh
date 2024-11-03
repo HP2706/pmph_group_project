@@ -39,96 +39,46 @@ void deviceRadixSortKernel(
         SIZE
     );
 
-    cudaMalloc(&d_temp_storage, temp_storage_bytes);
-
-    // Perform the sort
-    cub::DeviceRadixSort::SortKeys(
-        d_temp_storage, 
-        temp_storage_bytes,
-        d_keys_in, 
-        d_keys_out,
-        SIZE
-    );
-
-    cudaFree(d_temp_storage);
-}
-
-
-// we use ElTp to make it generic over data types 
-template <typename ElTp, int BLOCK_SIZE, int Q>
-__global__ void CUBSortKernel(
-    ElTp* d_in, 
-    ElTp* d_out,    
-    int size 
-)
-{
-    using namespace cub;
-
-    // Specialize BlockRadixSort, BlockLoad, and BlockStore for the given parameters
-    typedef cub::BlockRadixSort<ElTp, BLOCK_SIZE, Q>                     BlockRadixSort;
-    typedef cub::BlockLoad<ElTp, BLOCK_SIZE, Q, cub::BLOCK_LOAD_TRANSPOSE>    BlockLoad;
-    typedef cub::BlockStore<ElTp, BLOCK_SIZE, Q, cub::BLOCK_STORE_TRANSPOSE>  BlockStore;
-
-    // Allocate shared memory
-    __shared__ union {
-        typename BlockRadixSort::TempStorage  sort;
-        typename BlockLoad::TempStorage       load;
-        typename BlockStore::TempStorage      store;
-    } temp_storage;
-
-    int block_offset = blockIdx.x * (BLOCK_SIZE * Q);  // OffsetT for this block's segment
-
-    // Obtain a segment of consecutive keys that are blocked across threads
-    ElTp thread_keys[Q];
-    BlockLoad(temp_storage.load).Load(d_in + block_offset, thread_keys);
-    __syncthreads();
-
-    // Collectively sort the keys
-    BlockRadixSort(temp_storage.sort).Sort(thread_keys);
-    __syncthreads();
-
-    // Store the sorted segment
-    BlockStore(temp_storage.store).Store(d_out + block_offset, thread_keys);
-}
-
-
-// Example to check cub sort global works
-int callCubSort() {
-    const int NUM_ITEMS = 1000000;
+    void* mem = NULL;
+    size_t len = 0;
     
-    // Allocate host arrays
-    int* h_keys = new int[NUM_ITEMS];
+    uint32_t startBit = 0;
+    uint32_t endBit = sizeof(T) * 8; // 8 bits per byte 
+    
+    cub::DeviceRadixSort::SortKeys(
+        mem, 
+        len, 
+        d_keys_in, 
+        d_keys_out, 
+        SIZE, 
+        startBit, 
+        endBit
+    );
+    cudaMalloc(&mem, len);
 
-    // Initialize data
-    for (int i = 0; i < NUM_ITEMS; i++) {
-        h_keys[i] = rand();
-    }
-
-    // Allocate device memory
-    int *d_keys_in, *d_keys_out;
-    cudaMalloc(&d_keys_in, NUM_ITEMS * sizeof(int));
-    cudaMalloc(&d_keys_out, NUM_ITEMS * sizeof(int));
-
-    cudaMemcpy(d_keys_in, h_keys, NUM_ITEMS * sizeof(int), cudaMemcpyHostToDevice);
-
-    deviceRadixSortKernel(d_keys_in, d_keys_out, NUM_ITEMS);
     cudaDeviceSynchronize();
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        printf("CUDA error: %s\n", cudaGetErrorString(err));
+    cudaError_t cub_err = cudaGetLastError();
+    if (cub_err != cudaSuccess) {
+        printf("cub sort kernel failed: %s\n", cudaGetErrorString(cub_err));
+        return;
     }
 
-    cudaMemcpy(h_keys, d_keys_out, NUM_ITEMS * sizeof(int), cudaMemcpyDeviceToHost);
-
-    for (int i = 0; i < 1000; i++) {
-        printf("%d\n", h_keys[i]);
+    cub::DeviceRadixSort::SortKeys(
+        mem, 
+        len, 
+        d_keys_in, 
+        d_keys_out, 
+        SIZE, 
+        startBit, 
+        endBit
+    );
+    cudaDeviceSynchronize();
+    
+    cub_err = cudaGetLastError();
+    if (cub_err != cudaSuccess) {
+        printf("cub sort kernel failed: %s\n", cudaGetErrorString(cub_err));
+        return;
     }
-
-
-    // Cleanup
-    delete[] h_keys;
-    cudaFree(d_keys_in);
-    cudaFree(d_keys_out);
-
-    return 0;
+    cudaFree(mem);
 }
+

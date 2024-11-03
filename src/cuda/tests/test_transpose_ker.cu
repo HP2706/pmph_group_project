@@ -64,13 +64,14 @@ void verifyTranspose(
 //Should probably be moved to separate file...
 template<typename P>
 void testTransposeKer(
-    uint32_t input_size
+    uint32_t input_size,
+    int grid_size
 )
 {
     static_assert(is_params<P>::value, "P must be a Params instance");
     // Calculate grid size based on input size and elements per thread
 
-    uint32_t hist_size = P::H * P::GRID_SIZE;
+    uint32_t hist_size = P::H * grid_size;
     
     // ptr allocations
     
@@ -118,16 +119,22 @@ void testTransposeKer(
         d_histogram,
         d_histogram_transposed,
         P::H,
-        P::GRID_SIZE
+        grid_size
     );
 
     cudaMemcpy(h_histogram_transposed, d_histogram_transposed, sizeof(UintType) * hist_size, cudaMemcpyDeviceToHost);
-    verifyTranspose<UintType>(h_histogram, cpu_h_histogram_transposed, h_histogram_transposed, P::H, P::GRID_SIZE);
+    verifyTranspose<UintType>(
+        h_histogram, 
+        cpu_h_histogram_transposed, 
+        h_histogram_transposed, 
+        P::H, 
+        grid_size
+    );
 
     tiled_transpose_kernel<UintType, P::T>(
         d_histogram_transposed,
         d_histogram_transposed_2,
-        P::GRID_SIZE,
+        grid_size,
         P::H
     );
 

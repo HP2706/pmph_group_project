@@ -92,7 +92,8 @@ void assertCubIsEqualToOurImplementation(
 
 template<typename P>
 __host__ void testRadixSortKer(
-    uint32_t input_size
+    uint32_t input_size,
+    int grid_size
 )
 {
     static_assert(is_params<P>::value, "P must be a Params instance");
@@ -162,34 +163,11 @@ __host__ void testRadixSortKer(
     cudaMemcpy(h_out, d_out, input_size * sizeof(typename P::ElementType), cudaMemcpyDeviceToHost);
     quickvalidatesortedarray<uint32_t>(input_size, h_out);
 
-    // Calculate grid size based on input size
-    int elements_per_block = P::BLOCK_SIZE * P::Q;
-    int grid_size = (input_size + elements_per_block - 1) / elements_per_block;
-    
-    void* mem = NULL;
-    size_t len = 0;
-    
-    uint32_t startBit = 0;
-    uint32_t endBit = 32;
-    
-    cub::DeviceRadixSort::SortKeys(mem, len, cub_d_in, cub_d_out, input_size, startBit, endBit);
-    cudaMalloc(&mem, len);
-
-    cudaDeviceSynchronize();
-    cudaError_t cub_err = cudaGetLastError();
-    if (cub_err != cudaSuccess) {
-        printf("cub sort kernel failed: %s\n", cudaGetErrorString(cub_err));
-        return;
-    }
-
-    cub::DeviceRadixSort::SortKeys(mem, len, cub_d_in, cub_d_out, input_size, startBit, endBit);
-    cudaDeviceSynchronize();
-    
-    cub_err = cudaGetLastError();
-    if (cub_err != cudaSuccess) {
-        printf("cub sort kernel failed: %s\n", cudaGetErrorString(cub_err));
-        return;
-    }
+    deviceRadixSortKernel<typename P::ElementType>(
+        cub_d_in,
+        cub_d_out,
+        input_size
+    );
     
     // copy results back to host
     cudaMemcpy(cub_h_out, cub_d_out, input_size * sizeof(typename P::ElementType), cudaMemcpyDeviceToHost);

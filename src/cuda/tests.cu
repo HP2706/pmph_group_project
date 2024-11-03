@@ -46,14 +46,13 @@ void run_tests() {
         uint32_t, 
         Q, 
         lgH, 
-        GRID_SIZE, 
         BLOCK_SIZE, 
         T
     >;
 
-    testTransposeKer<P>(input_size);
-    testHistoKer<P>(input_size);
-    testRadixSortKer<P>(input_size);
+    testTransposeKer<P>(input_size, GRID_SIZE);
+    testHistoKer<P>(input_size, GRID_SIZE);
+    testRadixSortKer<P>(input_size, GRID_SIZE);
 }
 
 int main() {

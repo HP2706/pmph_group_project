@@ -60,14 +60,12 @@ template<
     typename UintTp, 
     int _Q, 
     int _lgH, 
-    int _GRID_SIZE, 
     int _BLOCK_SIZE, 
     int _T
 >
 struct Params {
     static constexpr int Q = _Q; // number of elements per thread
     static constexpr int lgH = _lgH; // number of bits per iteration
-    static constexpr int GRID_SIZE = _GRID_SIZE; // number of blocks per grid
     static constexpr int BLOCK_SIZE = _BLOCK_SIZE; // number of threads per block
     static constexpr int T = _T; // Tile size
     static constexpr int H = 1 << _lgH; // number of bins, this is simply 2^lgH 
@@ -87,8 +85,8 @@ struct Params {
 template<typename T>
 struct is_params : std::false_type {};
 
-template<class ElTp, class UintTp, int _Q, int _lgH, int _GRID_SIZE, int _BLOCK_SIZE, int _T>
-struct is_params<Params<ElTp, UintTp, _Q, _lgH, _GRID_SIZE, _BLOCK_SIZE, _T>> : std::true_type {};
+template<class ElTp, class UintTp, int _Q, int _lgH, int _BLOCK_SIZE, int _T>
+struct is_params<Params<ElTp, UintTp, _Q, _lgH, _BLOCK_SIZE, _T>> : std::true_type {};
 
 
 int gpuAssert(cudaError_t code) {

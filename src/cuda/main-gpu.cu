@@ -25,37 +25,6 @@ using namespace std;
 #define ERR          0.000005
 
 
-void run_tests() {
-    initHwd();
-
-    // setup params
-
-    const uint32_t input_size = 100000;
-    const uint32_t Q = 22; // 22
-    const uint32_t lgH = 8;
-    const uint32_t BLOCK_SIZE = 256;
-    const uint32_t T = 32;
-    const uint32_t GRID_SIZE = (input_size + (BLOCK_SIZE * Q - 1)) / (BLOCK_SIZE * Q);
-
-    printf("total number of threads used: %u\n", GRID_SIZE * BLOCK_SIZE);
-    printf("QB: %u\n", Q * BLOCK_SIZE);
-    printf("grid size : %u\n", GRID_SIZE);
-
-    using P = Params<
-        uint32_t, 
-        uint32_t, 
-        Q, 
-        lgH, 
-        GRID_SIZE, 
-        BLOCK_SIZE, 
-        T
-    >;
-
-    testTransposeKer<P>(input_size);
-    testHistoKer<P>(input_size);
-    testRadixSortKer<P>(input_size);
-}
-
 
 
 enum class SortImplementation {
@@ -132,7 +101,8 @@ double runSort(
     typename P::ElementType* d_in, 
     typename P::ElementType* d_out, 
     int size,
-    SortImplementation impl
+    SortImplementation impl,
+    int grid_size
 ) {
     uint32_t *d_histogram = nullptr;
     uint32_t *d_histogram_transposed = nullptr;
@@ -141,7 +111,7 @@ double runSort(
     if (impl == SortImplementation::OUR_IMPL) {
         // Initialize histogram memory for our implementation
         const uint32_t NUM_BINS = 1 << 8;
-        const uint32_t hist_size = NUM_BINS * P::GRID_SIZE;
+        const uint32_t hist_size = NUM_BINS * grid_size;
         
         cudaMalloc((uint32_t**)&d_histogram, sizeof(uint32_t) * hist_size);
         cudaMalloc((uint32_t**)&d_histogram_transposed, sizeof(uint32_t) * hist_size);
@@ -160,10 +130,25 @@ double runSort(
     struct timeval t_start, t_end, t_diff;
     gettimeofday(&t_start, NULL);
 
+
+    // warmup
+    if (impl == SortImplementation::CUB) {
+        deviceRadixSortKernel<typename P::ElementType>(
+            d_in,
+            d_out,
+            size
+        );
+    } else {
+        RadixSortKer<P>(d_in, d_out, size);
+    }
+
+
     for (int i = 0; i < GPU_RUNS; i++) {
         if (impl == SortImplementation::CUB) {
-            CUBSortKernel<typename P::ElementType, P::BLOCK_SIZE, P::Q>(
-                d_in, d_out, size
+            deviceRadixSortKernel<typename P::ElementType>(
+                d_in,
+                d_out,
+                size
             );
         } else {
             RadixSortKer<P>(d_in, d_out, size);
@@ -189,12 +174,6 @@ double runSort(
     printf("Bandwidth: %.2f GB/sec\n", bandwidth);
     printf("Latency: %.2f microsecs\n", elapsed);
 
-    // Clean up histogram memory if using our implementation
-    if (impl == SortImplementation::OUR_IMPL) {
-        if (d_histogram) cudaFree(d_histogram);
-        if (d_histogram_transposed) cudaFree(d_histogram_transposed);
-        if (d_hist_out) cudaFree(d_hist_out);
-    }
 
     return elapsed;
 }
@@ -253,17 +232,19 @@ int main(int argc, char* argv[]) {
         uint32_t, 
         uint32_t, 
         Q, 
-        lgH, 
-        ((SIZE + (BLOCK_SIZE * Q - 1)) / (BLOCK_SIZE * Q)),
+        lgH,
         BLOCK_SIZE, 
         T
     >;
+
+    const int GRID_SIZE = (SIZE + (BLOCK_SIZE * Q - 1)) / (BLOCK_SIZE * Q);
 
     double elapsed = runSort<P>(
         d_in, 
         d_out, 
         SIZE, 
-        SortImplementation::CUB
+        SortImplementation::CUB,
+        GRID_SIZE
     );
 
     // Clean up
