@@ -21,7 +21,7 @@ __device__ void TwoWayPartition(
 
     for (int bit = 0; bit < P::lgH; bit++) {
 
-        // Sequentially reduce Q elements
+        // Sequential reduce of Q elements in registers
         uint16_t accum = 0;
         for (int q_idx = 0; q_idx < P::Q; q_idx++) {
             // we shift by bit to get the bit value and we mask it with 1 to get the boolean value
@@ -32,20 +32,19 @@ __device__ void TwoWayPartition(
         
         // the thread local count is stored to shared memory
         local_histo[tid] = accum;
-
+        __syncthreads();
         // we compute the inclusive scan across shared memory
         // to get the cumulative sum of unset bits up to our threadIdx
         uint16_t res = scanIncBlock<Add<uint16_t>>(local_histo, tid);
-        __syncthreads();
         local_histo[tid] = res;
         __syncthreads();
 
         // we get the prefix sum for the entire block
         // which is the cumulative sum of unset bits up to the last thread in the block
         int16_t prefix_sum = local_histo[P::BLOCK_SIZE-1];
-
         // each thread loads to its registers from shared memory
-        // the prefix sum of the previous thread
+        // the prefix sum of the previous thread 
+        // IE would be the same as readin local_histogram as an exclusive scan
         if (tid == 0) {
             accum = 0; 
         } else {
@@ -56,6 +55,7 @@ __device__ void TwoWayPartition(
 
         // each thread sequentially rearranges its Q elements
         // and write them to their new position in shared memory
+        
         for (int q_idx = 0; q_idx < P::Q; q_idx++) {
             uint val = reg[q_idx];
             uint16_t bit_val = (uint16_t) isBitUnset<uint>(bit_offs + bit, val);
@@ -65,11 +65,16 @@ __device__ void TwoWayPartition(
             int newpos;
 
             if (bit_val == uint(1)) {
+                // if bit is unset(it is 0) we 
+                // keep the same position
                 newpos = accum -1 ;
             } else {
-                // we add the prefix of the thread to the local histogram position
-                // and we subtract the accumumulator to get the new position
-                // we offset by threadIdx.x*Q 
+                // if bit is set(it is 1) we compute the new position
+                // as: 
+                // prefix_sum : the cumulative sum of unset elements up to the previous thread
+                // thread_offset + q_idx : the original position of the element in the block
+                // we subtract accum the cumulative sum of unset elements for 
+                // that thread within its Q elements
                 newpos = prefix_sum + thread_offset + q_idx - accum;
             }
             // we write the element to the new position
@@ -77,7 +82,6 @@ __device__ void TwoWayPartition(
         }
         // wait for all threads to have written their elements
         __syncthreads();
-
 
         // each thread loads its new elements from shared memory to its registers
         if (bit < P::lgH-1) {

@@ -115,8 +115,6 @@ __global__ void RankPermuteKer(
     const int elms_buf_size = P::BLOCK_SIZE * P::Q;
 
     __shared__ uint shmem[elms_buf_size];
-    //uint* shmem = (uint*) shmem_buf;
-
     __shared__ uint64_t global_histo[P::H];
     __shared__ uint16_t local_histo[P::BLOCK_SIZE];
     
@@ -141,9 +139,9 @@ __global__ void RankPermuteKer(
     */
 
     TwoWayPartition<P>(
-        reg, 
-        shmem, 
-        local_histo,
+        reg, // registers
+        shmem, // shared memory
+        local_histo, // shared memory
         bit_offs,
         N
     );
@@ -160,14 +158,14 @@ __global__ void RankPermuteKer(
     */
 
     WriteOutput<P>(
-        reg,
-        global_histo,
-        local_histo,
-        d_hist,
-        d_hist_transposed_scanned_transposed,
-        bit_offs,
-        N,
-        arr_out
+        reg, // registers
+        global_histo, // shared memory
+        local_histo, // shared memory
+        d_hist, // global memory
+        d_hist_transposed_scanned_transposed, // global memory
+        bit_offs, // integer
+        N, // integer
+        arr_out // global memory
     );
 }
 
